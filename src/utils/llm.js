@@ -1,6 +1,12 @@
 /**
  * TDE — LLM Utility
- * All LLM calls go through OpenRouter.
+ * ═══════════════════════════════════════════════════════════════════
+ * Four entry points:
+ *   callLLM()     — OpenRouter, used for analysis & ingest-time work
+ *   callLLMFast() — Cerebras (if configured) for user-facing retrieval,
+ *                   falls back to callLLM() on any error
+ *   callLLMJSON() — OpenRouter wrapper that parses JSON responses
+ *   generateEmbedding() / batchEmbed() — OpenRouter embeddings
  */
 
 const config = require('../config');
@@ -21,6 +27,61 @@ async function callLLM(prompt, options = {}) {
     const data = await resp.json();
     return data.choices?.[0]?.message?.content || null;
   } catch (err) { console.error(`  LLM call failed: ${err.message}`); return null; }
+}
+
+/**
+ * Fast LLM path for user-facing retrieval (reconstruct / ask).
+ * Routes to Cerebras when configured, falls back to OpenRouter via callLLM on any error.
+ *
+ * @param {string} prompt
+ * @param {Object} options — same shape as callLLM (model, maxTokens, temperature, system).
+ *                           `model` is used ONLY if Cerebras fails and we fall back to OpenRouter.
+ *                           Cerebras uses config.CEREBRAS_MODEL regardless.
+ */
+async function callLLMFast(prompt, options = {}) {
+  const { maxTokens = 4000, temperature = 0.3, system = '' } = options;
+
+  if (config.CEREBRAS_API_KEY) {
+    const messages = [];
+    if (system) messages.push({ role: 'system', content: system });
+    messages.push({ role: 'user', content: prompt });
+
+    try {
+      const t0 = Date.now();
+      const resp = await fetch(`${config.CEREBRAS_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.CEREBRAS_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: config.CEREBRAS_MODEL,
+          messages,
+          max_tokens: maxTokens,
+          temperature,
+        }),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        console.error(`  [Cerebras] error ${resp.status}: ${errText.slice(0, 200)} — falling back to OpenRouter`);
+      } else {
+        const data = await resp.json();
+        const content = data.choices?.[0]?.message?.content;
+        if (content) {
+          const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+          console.log(`  [Cerebras] ${config.CEREBRAS_MODEL}: ${elapsed}s`);
+          return content;
+        }
+        console.error(`  [Cerebras] empty response — falling back to OpenRouter`);
+      }
+    } catch (err) {
+      console.error(`  [Cerebras] call failed: ${err.message} — falling back to OpenRouter`);
+    }
+  }
+
+  // Fallback: Cerebras not configured OR Cerebras call failed
+  return callLLM(prompt, options);
 }
 
 async function callLLMJSON(prompt, options = {}) {
@@ -65,4 +126,4 @@ function parseJSONResponse(text) {
   return null;
 }
 
-module.exports = { callLLM, callLLMJSON, generateEmbedding, batchEmbed, parseJSONResponse };
+module.exports = { callLLM, callLLMFast, callLLMJSON, generateEmbedding, batchEmbed, parseJSONResponse };

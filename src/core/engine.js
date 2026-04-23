@@ -27,7 +27,7 @@ const Store   = require('./store');
 const { munge }     = require('./munger');
 const { tagAtoms }  = require('./tagger');
 const { runAnalysis } = require('./analyzers');
-const { batchEmbed, callLLM, generateEmbedding } = require('../utils/llm');
+const { batchEmbed, callLLM, callLLMFast, generateEmbedding } = require('../utils/llm');
 const { v4: uuidv4 } = require('uuid');
 
 const youtube = require('../ingest/youtube');
@@ -262,7 +262,7 @@ class TDEngine {
     const col = await this.store.getCollection(collectionId);
     const context = results.map((r, i) => `[${i + 1}] ${r.text}`).join('\n\n');
     const filterStr = Object.entries(filters).filter(([,v]) => v).map(([k,v]) => `${k}: ${v}`).join(', ');
-    const answer = await callLLM(
+    const answer = await callLLMFast(
       `Answer this question using ONLY the content below:\n\nQUESTION: ${question}${filterStr ? '\nFILTER CONTEXT: ' + filterStr : ''}\n\nCONTENT ATOMS:\n${context}\n\nBe specific, cite the atoms, and be concise.`,
       { model: config.CONTENT_MODEL, system: `You answer questions using only provided content from the knowledge base "${col?.name || collectionId}". Be accurate and cite specific atoms.`, maxTokens: 1500, temperature: 0.3 }
     );
@@ -342,10 +342,10 @@ RULES:
 
     const userPrompt = `INTENT: ${intent}\n${intentInstruction}\n\n${context ? `CONTEXT: ${context}\n` : ''}${filterDesc ? `AUDIENCE FILTERS: ${filterDesc}\n` : ''}\nQUERY: ${query}\n\nATOMS (${topAtoms.length} of ${allResults.length} matches):\n\n${atomContext}\n\n${format === 'json' ? 'Respond with valid JSON only.' : 'After your main output, include a GAPS section listing information the atoms could NOT provide.'}`;
 
-    // Step 3: LLM reconstruction
+    // Step 3: LLM reconstruction (fast path — Cerebras if configured, else OpenRouter CONTENT_MODEL)
     console.log(`  Reconstructing (${intent}, ${format}, max ${max_words} words)...`);
     const t0 = Date.now();
-    const raw = await callLLM(userPrompt, {
+    const raw = await callLLMFast(userPrompt, {
       model: config.CONTENT_MODEL, system: systemPrompt,
       maxTokens: Math.min(max_words ? max_words * 2 : 4000, 8000),
       temperature: intent === 'enrichment' ? 0.2 : 0.4,

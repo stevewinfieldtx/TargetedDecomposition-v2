@@ -21,6 +21,14 @@ module.exports = {
   ANTHROPIC_BASE_URL:    process.env.ANTHROPIC_BASE_URL    || 'https://api.anthropic.com',
   ANTHROPIC_BATCH_MODEL: process.env.ANTHROPIC_BATCH_MODEL || 'claude-sonnet-4-6',
 
+  // Cerebras direct (used for user-facing retrieval — reconstruct() and ask())
+  // Cerebras serves Llama models at ~2000 tok/sec. When CEREBRAS_API_KEY is set,
+  // output generation routes here for sub-second responses.
+  // Falls back to OpenRouter CONTENT_MODEL on any error.
+  CEREBRAS_API_KEY:  process.env.CEREBRAS_API_KEY  || '',
+  CEREBRAS_BASE_URL: process.env.CEREBRAS_BASE_URL || 'https://api.cerebras.ai/v1',
+  CEREBRAS_MODEL:    process.env.CEREBRAS_MODEL    || 'llama-3.3-70b',
+
   // Models
   ANALYSIS_MODEL:  process.env.ANALYSIS_MODEL  || 'qwen/qwen-2.5-72b-instruct',
   CONTENT_MODEL:   process.env.CONTENT_MODEL   || 'meta-llama/llama-3.1-70b-instruct',
