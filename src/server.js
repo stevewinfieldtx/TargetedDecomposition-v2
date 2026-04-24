@@ -183,6 +183,10 @@ app.get('/health', (req, res) => {
   } else {
     console.log('  Intel Cache: SKIPPED (no PostgreSQL)');
   }
+
+  // CPPW Routes: inbound endpoint for TrueWriting to push written-voice fingerprints.
+  // Works with Postgres OR SQLite since it uses engine.store.storeIntelligence().
+  require('./routes/cppw-routes')(app, auth, engine);
 })();
 
 // ── Templates ────────────────────────────────────────────────────────────────

@@ -421,14 +421,38 @@ class Store {
 
   // ── Intelligence ───────────────────────────────────────────────────────────
 
-  async storeIntelligence(collectionId, intelType, data) {
+  /**
+   * Store an intelligence record.
+   *
+   * By default (keepHistory=false), behaves as before: deletes any existing
+   * record of the same (collection_id, intel_type) and inserts the new one.
+   * The latest record is always authoritative.
+   *
+   * When keepHistory=true, the DELETE is skipped and each call appends a new
+   * timestamped row. getIntelligence() still returns the latest via
+   * ORDER BY created_at DESC LIMIT 1, and you can audit prior versions by
+   * querying the table directly. Used for CPPW/CPPV so quarterly refreshes
+   * preserve what profile was active when a given piece of content was written.
+   *
+   * @param {string} collectionId
+   * @param {string} intelType
+   * @param {Object} data
+   * @param {Object} [options]
+   * @param {boolean} [options.keepHistory=false]
+   */
+  async storeIntelligence(collectionId, intelType, data, options = {}) {
     await this._waitReady();
+    const keepHistory = options.keepHistory === true;
     if (this._usePg()) {
-      await this.pg.query('DELETE FROM intelligence WHERE collection_id=$1 AND intel_type=$2', [collectionId, intelType]);
+      if (!keepHistory) {
+        await this.pg.query('DELETE FROM intelligence WHERE collection_id=$1 AND intel_type=$2', [collectionId, intelType]);
+      }
       await this.pg.query('INSERT INTO intelligence (collection_id,intel_type,data) VALUES ($1,$2,$3)',
         [collectionId, intelType, JSON.stringify(data)]);
     } else if (this.db) {
-      this.db.prepare('DELETE FROM intelligence WHERE collection_id=? AND intel_type=?').run(collectionId, intelType);
+      if (!keepHistory) {
+        this.db.prepare('DELETE FROM intelligence WHERE collection_id=? AND intel_type=?').run(collectionId, intelType);
+      }
       this.db.prepare('INSERT INTO intelligence (collection_id,intel_type,data) VALUES (?,?,?)')
         .run(collectionId, intelType, JSON.stringify(data));
     }

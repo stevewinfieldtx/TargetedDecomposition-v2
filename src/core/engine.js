@@ -272,6 +272,10 @@ class TDEngine {
   // ── Reconstruct (Targeted Recomposition) ─────────────────────────────────────
 
   async reconstruct(collectionIds, options = {}) {
+    // Intents where we inject the person's voice profile (CPPW > CPPV fallback)
+    // into the system prompt by default. Callers can override via options.in_voice.
+    const VOICE_AWARE_INTENTS = new Set(['sales_email', 'agent_response', 'custom']);
+
     const {
       intent = 'custom',
       query,
@@ -280,12 +284,14 @@ class TDEngine {
       format = 'text',
       max_atoms = 15,
       max_words = 500,
+      in_voice = VOICE_AWARE_INTENTS.has(intent),
+      voice_collection = null, // which collection's voice to use when multi-collection (defaults to first)
     } = options;
 
     if (!query) throw new Error('query is required for reconstruction');
     const cols = Array.isArray(collectionIds) ? collectionIds : [collectionIds];
 
-    console.log(`\n  Reconstruct: "${intent}" across [${cols.join(', ')}]`);
+    console.log(`\n  Reconstruct: "${intent}" across [${cols.join(', ')}]${in_voice ? ' [voice-aware]' : ''}`);
     console.log(`  Query: ${query.slice(0, 80)}...`);
     console.log(`  Filters: ${JSON.stringify(filters)}`);
 
@@ -331,14 +337,49 @@ class TDEngine {
 
     const filterDesc = Object.entries(filters).filter(([,v]) => v).map(([k,v]) => `${k}: ${v}`).join(', ');
 
+    // ── Voice Profile Injection (CPPW > CPPV > none) ──
+    // Only when in_voice is true AND we have a specific collection to source the voice from.
+    let voiceSection = '';
+    let voiceTypeUsed = 'none';
+    if (in_voice) {
+      const voiceCollectionId = voice_collection || cols[0];
+      try {
+        const { profile, type } = await this.getVoiceProfile(voiceCollectionId);
+        if (profile) {
+          voiceTypeUsed = type;
+          const profilePayload = type === 'CPPV' && profile.profile ? profile.profile : profile;
+          const frameDescription = type === 'CPPW'
+            ? "This is the person's WRITTEN-style fingerprint, built by TrueWriting from their actual emails. It is the highest-fidelity guide to how they write."
+            : "This is the person's SPOKEN-style fingerprint, derived from their video and podcast content. Use it to approximate how they would write, recognizing that spoken patterns don't translate perfectly to written prose.";
+          voiceSection = `
+VOICE FINGERPRINT (type: ${type})
+${frameDescription}
+
+${JSON.stringify(profilePayload, null, 2)}
+
+VOICE RULES:
+- Write in this person's voice. Match their vocabulary tier, sentence length distribution, rhetorical patterns, signature phrases, and emotional range.
+- Use their catchphrases and unique expressions naturally where they fit — do not force them.
+- Do NOT fall into generic "ChatGPT-style" language (em-dashes used for pauses, "Furthermore"/"Moreover", hedged corporate phrasing) unless their fingerprint shows those are native to them.
+- If the fingerprint and the required content are at odds, preserve the voice over producing the most polished output.
+`;
+        } else {
+          console.log(`  Voice: no CPPW or CPPV available for ${voiceCollectionId}, proceeding without voice injection`);
+        }
+      } catch (err) {
+        console.log(`  Voice lookup failed: ${err.message}, proceeding without voice injection`);
+      }
+    }
+
     const systemPrompt = `You are the Targeted Decomposition Engine's reconstruction system. Take atomic intelligence units and REASSEMBLE them into a targeted deliverable.
 
 RULES:
-- Use ONLY the provided atoms. Do not add information from general knowledge.
-- Every claim must trace to a specific atom.
+- Use ONLY the provided atoms for factual content. Do not add information from general knowledge.
+- Every factual claim must trace to a specific atom.
 - If atoms are insufficient, state what is missing in a GAPS section at the end.
 - ${max_words ? `Stay under ${max_words} words.` : 'Be comprehensive but not padded.'}
-- ${format === 'json' ? 'Return valid JSON only. No markdown fences.' : format === 'markdown' ? 'Use markdown formatting.' : 'Use clean prose.'}`;
+- ${format === 'json' ? 'Return valid JSON only. No markdown fences.' : format === 'markdown' ? 'Use markdown formatting.' : 'Use clean prose.'}
+${voiceSection}`;
 
     const userPrompt = `INTENT: ${intent}\n${intentInstruction}\n\n${context ? `CONTEXT: ${context}\n` : ''}${filterDesc ? `AUDIENCE FILTERS: ${filterDesc}\n` : ''}\nQUERY: ${query}\n\nATOMS (${topAtoms.length} of ${allResults.length} matches):\n\n${atomContext}\n\n${format === 'json' ? 'Respond with valid JSON only.' : 'After your main output, include a GAPS section listing information the atoms could NOT provide.'}`;
 
@@ -380,7 +421,12 @@ RULES:
 
     return {
       output, atoms_used: topAtoms, atoms_available: allResults.length, confidence, gaps,
-      meta: { intent, collections: cols, filters, elapsed_seconds: parseFloat(elapsed), atoms_retrieved: topAtoms.length },
+      meta: {
+        intent, collections: cols, filters,
+        elapsed_seconds: parseFloat(elapsed),
+        atoms_retrieved: topAtoms.length,
+        voice_type_used: voiceTypeUsed, // 'CPPW' | 'CPPV' | 'none'
+      },
     };
   }
 
@@ -424,7 +470,7 @@ RULES:
       } catch (err) { console.error(`  Analysis failed for ${source.title}: ${err.message}`); }
     }
     await this._buildCollectionIntelligence(collectionId, results);
-    await this._buildVoiceProfile(collectionId);
+    await this._buildCPPV(collectionId);
     return results;
   }
 
@@ -468,38 +514,102 @@ RULES:
     console.log(`  Engagement: ${engagement.length} sources, ${totalViews} total views`);
   }
 
-  async _buildVoiceProfile(collectionId) {
+  // ── CPPV: Voice Profile From Video/Podcast Content (TDE-native) ──────────────
+  // Builds a spoken-style fingerprint from atoms that originated in video or audio
+  // sources ONLY. Emails, PDFs, web articles, pasted text, etc. are strictly excluded.
+  // Stored with keepHistory=true so quarterly refreshes preserve what CPPV was
+  // active when a given piece of content was composed (audit trail).
+  //
+  // CPPW (written-style fingerprint from emails) is NOT built here. It is produced
+  // externally by TrueWriting's on-prem email analyzer and pushed to TDE via
+  // POST /api/cppw/:collectionId.
+
+  async _buildCPPV(collectionId) {
     const apiUrl = config.TRUEWRITING_API_URL;
-    if (!apiUrl) { console.log(`  Voice profile: TRUEWRITING_API_URL not configured`); return null; }
+    if (!apiUrl) { console.log(`  CPPV: TRUEWRITING_API_URL not configured — skipping`); return null; }
+
+    const VIDEO_AUDIO_TYPES = new Set(['youtube', 'audio', 'podcast', 'mp3', 'mp4']);
 
     const sources = await this.store.getSources(collectionId);
     const readySources = sources.filter(s => s.status === 'ready');
+    const videoAudioSources = readySources.filter(s => VIDEO_AUDIO_TYPES.has(s.source_type));
+
+    if (videoAudioSources.length === 0) {
+      console.log(`  CPPV: no video/audio sources in collection (have ${readySources.length} total ready, none video/audio)`);
+      return null;
+    }
+
     const segments = [];
-    for (const source of readySources) {
+    for (const source of videoAudioSources) {
       const atoms = await this.store.getAtoms(collectionId, source.id);
       const fullText = atoms.map(a => a.text).join(' ');
       if (fullText.length > 20) {
         const meta = typeof source.metadata === 'string' ? JSON.parse(source.metadata || '{}') : (source.metadata || {});
-        segments.push({ text: fullText, source_id: source.id, title: source.title || '', date: source.published_at || meta.publishedAt || null });
+        segments.push({
+          text: fullText,
+          source_id: source.id,
+          source_type: source.source_type,
+          title: source.title || '',
+          date: source.published_at || meta.publishedAt || null,
+        });
       }
     }
-    if (segments.length < 3) { console.log(`  Voice profile: Need 3+ sources (have ${segments.length})`); return null; }
 
-    console.log(`\n  Building voice profile via TrueWriting API...`);
-    try {
-      const resp = await fetch(`${apiUrl}/analyze`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_type: 'transcript', segments, min_words: 50 }),
-      });
-      if (!resp.ok) { console.log(`  Voice profile: API error ${resp.status}`); return null; }
-      const profile = await resp.json();
-      await this.store.storeIntelligence(collectionId, 'voice_profile', profile);
-      console.log(`  Voice profile stored`);
-      return profile;
-    } catch (err) {
-      console.log(`  Voice profile: TrueWriting unreachable (${err.message})`);
+    if (segments.length < 3) {
+      console.log(`  CPPV: Need 3+ video/audio sources (have ${segments.length})`);
       return null;
     }
+
+    console.log(`\n  Building CPPV via TrueWriting API (${segments.length} video/audio sources)...`);
+    try {
+      const resp = await fetch(`${apiUrl}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_type: 'transcript',
+          profile_type: 'cppv', // hint to TrueWriting that this is spoken content
+          segments,
+          min_words: 50,
+        }),
+      });
+      if (!resp.ok) { console.log(`  CPPV: API error ${resp.status}`); return null; }
+      const profile = await resp.json();
+
+      // Wrap with metadata so the stored record is self-describing for audit + recomposition
+      const record = {
+        profile,
+        profile_type: 'CPPV',
+        source_modality: 'spoken',
+        built_at: new Date().toISOString(),
+        sources_used: segments.map(s => ({ source_id: s.source_id, source_type: s.source_type, title: s.title })),
+        source_count: segments.length,
+      };
+      await this.store.storeIntelligence(collectionId, 'cppv', record, { keepHistory: true });
+      console.log(`  CPPV stored (${segments.length} sources, versioned)`);
+      return record;
+    } catch (err) {
+      console.log(`  CPPV: TrueWriting unreachable (${err.message})`);
+      return null;
+    }
+  }
+
+  // ── Voice Profile Cascade: CPPW → CPPV → none ────────────────────────────────
+  // Used by reconstruct() and any caller that needs to compose written content
+  // in a specific person's voice. CPPW (built externally from their emails) is
+  // preferred because it captures written style directly; CPPV (built here from
+  // their videos/podcasts) is a reasonable fallback because it captures
+  // communicative style from speech. Never mix the two.
+
+  async getVoiceProfile(collectionId) {
+    const cppw = await this.store.getIntelligence(collectionId, 'cppw');
+    if (cppw && cppw.data && Object.keys(cppw.data).length > 0) {
+      return { profile: cppw.data, type: 'CPPW' };
+    }
+    const cppv = await this.store.getIntelligence(collectionId, 'cppv');
+    if (cppv && cppv.data && Object.keys(cppv.data).length > 0) {
+      return { profile: cppv.data, type: 'CPPV' };
+    }
+    return { profile: null, type: 'none' };
   }
 
   // ── Stats & Intelligence ──────────────────────────────────────────────────────
