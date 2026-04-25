@@ -173,6 +173,78 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ── Public Dashboard Stats (no auth — aggregate counts only) ─────────────
+// Returns collection counts grouped by resource_type for the website brain viz.
+// No sensitive data exposed — just counts and labels.
+
+const RESOURCE_TYPES = ['CPP Primary', 'CPP Secondary', 'Vendor', 'Solution', 'Partner', 'Company'];
+
+app.get('/public/dashboard', async (req, res) => {
+  try {
+    const collections = await engine.listCollections();
+
+    // Group collections by resource_type from metadata
+    const byType = {};
+    RESOURCE_TYPES.forEach(t => { byType[t] = { type: t, collections: 0, atoms: 0, sources: 0 }; });
+    byType['Uncategorized'] = { type: 'Uncategorized', collections: 0, atoms: 0, sources: 0 };
+
+    let totalAtoms = 0, totalSources = 0, totalCollections = collections.length;
+
+    for (const col of collections) {
+      const meta = typeof col.metadata === 'string' ? JSON.parse(col.metadata) : (col.metadata || {});
+      const rType = meta.resource_type || 'Uncategorized';
+      const bucket = byType[rType] || byType['Uncategorized'];
+
+      let stats = { atomCount: 0, sourceCount: 0 };
+      try { stats = await engine.getStats(col.id); } catch {}
+
+      bucket.collections++;
+      bucket.atoms += stats.atomCount || 0;
+      bucket.sources += stats.sourceCount || 0;
+      totalAtoms += stats.atomCount || 0;
+      totalSources += stats.sourceCount || 0;
+    }
+
+    res.json({
+      ok: true,
+      totals: { collections: totalCollections, atoms: totalAtoms, sources: totalSources },
+      regions: RESOURCE_TYPES.map(t => byType[t]),
+      uncategorized: byType['Uncategorized'],
+      updated_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Dashboard stats unavailable', detail: e.message });
+  }
+});
+
+// ── Tag collection with resource_type ────────────────────────────────────
+// PATCH /collections/:id/resource-type { resource_type: "Vendor" }
+app.patch('/collections/:id/resource-type', auth, async (req, res) => {
+  try {
+    const { resource_type } = req.body;
+    if (!resource_type || !RESOURCE_TYPES.includes(resource_type)) {
+      return res.status(400).json({ error: 'resource_type must be one of: ' + RESOURCE_TYPES.join(', ') });
+    }
+    const col = await engine.getCollection(req.params.id);
+    if (!col) return res.status(404).json({ error: 'Collection not found' });
+
+    const meta = typeof col.metadata === 'string' ? JSON.parse(col.metadata) : (col.metadata || {});
+    meta.resource_type = resource_type;
+
+    if (engine.store._usePg()) {
+      await engine.store.pg.query(
+        'UPDATE collections SET metadata = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(meta), req.params.id]
+      );
+    } else if (engine.store.db) {
+      engine.store.db.prepare('UPDATE collections SET metadata = ? WHERE id = ?')
+        .run(JSON.stringify(meta), req.params.id);
+    }
+
+    res.json({ ok: true, collectionId: req.params.id, resource_type });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Intel Cache (Company + Industry Knowledge Persistence) ──────────────
 // Mounts /intel/company, /intel/industry, /intel/stats endpoints
 // Tables auto-created on startup. TTL configurable via INTEL_TTL_DAYS env var.
