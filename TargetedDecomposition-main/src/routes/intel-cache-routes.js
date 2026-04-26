@@ -54,12 +54,6 @@ module.exports = function mountIntelCache(app, auth, pg) {
       CREATE INDEX IF NOT EXISTS idx_company_intel_updated ON company_intel(updated_at);
     `);
 
-    // Atom cache columns — store REAL 9D-tagged atoms from LLM decomposition
-    await pg.query(`ALTER TABLE company_intel ADD COLUMN IF NOT EXISTS cached_atoms JSONB DEFAULT NULL`);
-    await pg.query(`ALTER TABLE company_intel ADD COLUMN IF NOT EXISTS cached_summary TEXT DEFAULT NULL`);
-    await pg.query(`ALTER TABLE company_intel ADD COLUMN IF NOT EXISTS cached_target JSONB DEFAULT NULL`);
-    await pg.query(`ALTER TABLE company_intel ADD COLUMN IF NOT EXISTS atoms_cached_at TIMESTAMPTZ DEFAULT NULL`);
-
     await pg.query(`
       CREATE TABLE IF NOT EXISTS industry_intel (
         industry_key    TEXT PRIMARY KEY,
@@ -85,31 +79,7 @@ module.exports = function mountIntelCache(app, auth, pg) {
       CREATE INDEX IF NOT EXISTS idx_industry_intel_name ON industry_intel(industry_name);
     `);
 
-    // Atom cache columns for industry archetypes
-    await pg.query(`ALTER TABLE industry_intel ADD COLUMN IF NOT EXISTS cached_atoms JSONB DEFAULT NULL`);
-    await pg.query(`ALTER TABLE industry_intel ADD COLUMN IF NOT EXISTS cached_summary TEXT DEFAULT NULL`);
-    await pg.query(`ALTER TABLE industry_intel ADD COLUMN IF NOT EXISTS cached_target JSONB DEFAULT NULL`);
-    await pg.query(`ALTER TABLE industry_intel ADD COLUMN IF NOT EXISTS atoms_cached_at TIMESTAMPTZ DEFAULT NULL`);
-
-    // Run cache — stores pain_groups + strategies for a specific entity combo (30-day TTL)
-    await pg.query(`
-      CREATE TABLE IF NOT EXISTS run_cache (
-        cache_key       TEXT PRIMARY KEY,
-        sender_domain   TEXT NOT NULL,
-        solution_domain TEXT NOT NULL,
-        customer_key    TEXT NOT NULL,
-        flow_mode       TEXT NOT NULL DEFAULT 'sell_to_customer',
-        pain_groups     JSONB NOT NULL,
-        strategies      JSONB NOT NULL,
-        metadata        JSONB DEFAULT '{}',
-        created_at      TIMESTAMPTZ DEFAULT NOW(),
-        updated_at      TIMESTAMPTZ DEFAULT NOW(),
-        ttl_days        INT DEFAULT ${TTL_DAYS}
-      );
-      CREATE INDEX IF NOT EXISTS idx_run_cache_updated ON run_cache(updated_at);
-    `);
-
-    console.log('  Intel Cache: company_intel + industry_intel + run_cache tables ready');
+    console.log('  Intel Cache: company_intel + industry_intel tables ready');
   };
 
   init().catch(err => console.error('  Intel Cache init error:', err.message));
