@@ -19,8 +19,6 @@
  * Mount: require('./routes/cppv-routes')(app, auth, engine);
  */
 
-const { generateVoiceGuide } = require('../utils/voice-guide-renderer');
-
 module.exports = function mountCPPVRoutes(app, auth, engine) {
   if (!app || !auth || !engine) {
     console.log('  CPPV Routes: SKIPPED (missing app/auth/engine)');
@@ -93,7 +91,8 @@ module.exports = function mountCPPVRoutes(app, auth, engine) {
       const col = await engine.getCollection(collectionId);
       const displayName = name || col?.name || collectionId;
 
-      // 3. Generate voice guide
+      // 3. Generate voice guide (lazy require so routes mount even if docx pkg missing)
+      const { generateVoiceGuide } = require('../utils/voice-guide-renderer');
       const guide = await generateVoiceGuide(intel.data, displayName, engine);
 
       // 4. Return as JSON or .docx

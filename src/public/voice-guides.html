@@ -208,19 +208,29 @@ async function loadCollections() {
   app.innerHTML = '<div class="loading-full"><span class="spinner"></span> Loading collections...</div>';
 
   try {
-    // Two calls total instead of 3 per collection
-    const [cols, cppStatus] = await Promise.all([
-      api('/collections'),
-      api('/api/cpp-status'),
-    ]);
+    // Load collections first (required)
+    const cols = await api('/collections');
     collections = cols;
 
-    const statusMap = cppStatus.collections || {};
+    // Try bulk CPP status (nice-to-have — don't crash if unavailable)
+    let statusMap = {};
+    try {
+      const cppStatus = await api('/api/cpp-status');
+      statusMap = cppStatus.collections || {};
+    } catch (e) {
+      console.warn('cpp-status not available, falling back to per-collection checks');
+      // Fallback: check each collection individually
+      for (const col of collections) {
+        statusMap[col.id] = { cppv: null, cppw: null };
+        try { const r = await api(`/api/cppv/${col.id}`); if (r.ok) statusMap[col.id].cppv = r.cppv; } catch {}
+        try { const r = await api(`/api/cppw/${col.id}`); if (r.ok) statusMap[col.id].cppw = r.cppw; } catch {}
+      }
+    }
+
     for (const col of collections) {
       const s = statusMap[col.id] || {};
       col._cppv = s.cppv || null;
       col._cppw = s.cppw || null;
-      // Stats already come from /collections endpoint
       col._stats = col.stats || null;
     }
 
