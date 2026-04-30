@@ -24,6 +24,7 @@
     "node-fetch": "^3.3.2",
     "pdf-parse": "^1.1.1",
     "pg": "^8.20.0",
+    "docx": "^9.1.1",
     "uuid": "^9.0.0"
   },
   "author": "Steve Winfield / WinTech Partners",

@@ -261,6 +261,10 @@ app.patch('/collections/:id/resource-type', auth, async (req, res) => {
   // CPPW Routes: inbound endpoint for TrueWriting to push written-voice fingerprints.
   // Works with Postgres OR SQLite since it uses engine.store.storeIntelligence().
   require('./routes/cppw-routes')(app, auth, engine);
+
+  // CPPV Routes: outbound endpoints to retrieve spoken voice profiles and
+  // download .docx voice guides for Eleven Labs / collaborative AI agents.
+  require('./routes/cppv-routes')(app, auth, engine);
 })();
 
 // ── Templates ────────────────────────────────────────────────────────────────
@@ -842,6 +846,10 @@ app.post('/retry/:collectionId', auth, async (req, res) => {
 
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+app.get('/voice-guides', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'voice-guides.html'));
 });
 
 app.use((req, res) => { res.status(404).json({ error: 'Not found', hint: 'See /health for available endpoints' }); });

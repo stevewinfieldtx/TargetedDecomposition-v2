@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TDE — Voice Guide Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#08090d;--card:#0f1118;--hover:#161924;--input:#0a0c12;--border:#1a1d2e;--border2:#252840;--green:#22c55e;--blue:#3b82f6;--amber:#f59e0b;--red:#ef4444;--purple:#a855f7;--cyan:#06b6d4;--text:#e2e4f0;--muted:#8b8fa8;--dim:#454766;--r:10px;--rs:6px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* Layout */
+.shell{max-width:1100px;margin:0 auto;padding:32px 24px}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px}
+.header h1{font-size:22px;font-weight:700;display:flex;align-items:center;gap:10px;letter-spacing:-.3px}
+.header .sub{font-size:12px;color:var(--dim);font-family:'JetBrains Mono',monospace}
+.header-actions{display:flex;gap:8px;align-items:center}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px rgba(34,197,94,.5);animation:pulse 2s ease infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Auth bar */
+.auth-bar{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 18px;margin-bottom:24px;display:flex;align-items:center;gap:12px}
+.auth-bar label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);white-space:nowrap}
+.auth-bar input{flex:1;padding:7px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none}
+.auth-bar input:focus{border-color:var(--blue)}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--rs);font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--text);transition:all .12s;text-decoration:none}
+.btn:hover{background:var(--hover);border-color:var(--border2)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.primary:hover{background:#2563eb}
+.btn.green{background:var(--green);border-color:var(--green);color:#000}.btn.green:hover{opacity:.9}
+.btn.sm{padding:5px 10px;font-size:11px}
+.btn:disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
+
+/* Collection cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:24px}
+.col-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px;transition:border-color .2s}
+.col-card:hover{border-color:var(--border2)}
+.col-card .name{font-size:15px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.col-card .desc{font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5}
+.col-card .meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace}
+.tag.green{background:rgba(34,197,94,.12);color:var(--green)}
+.tag.blue{background:rgba(59,130,246,.12);color:var(--blue)}
+.tag.amber{background:rgba(245,158,11,.12);color:var(--amber)}
+.tag.red{background:rgba(239,68,68,.12);color:var(--red)}
+.tag.purple{background:rgba(168,85,247,.12);color:var(--purple)}
+.tag.cyan{background:rgba(6,182,212,.12);color:var(--cyan)}
+.col-card .actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Status indicators */
+.status{display:inline-flex;align-items:center;gap:5px;font-size:11px}
+.dot{width:7px;height:7px;border-radius:50%}
+.dot.on{background:var(--green);box-shadow:0 0 5px rgba(34,197,94,.4)}
+.dot.off{background:var(--dim)}
+
+/* Preview panel */
+.preview{background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin-bottom:24px;overflow:hidden}
+.preview-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.preview-header h3{font-size:14px;font-weight:700}
+.preview-body{padding:20px;max-height:500px;overflow-y:auto}
+.section-block{margin-bottom:20px}
+.section-title{font-size:13px;font-weight:700;color:var(--blue);margin-bottom:8px}
+.section-rule{font-size:12px;color:var(--muted);line-height:1.7;padding:6px 0;border-bottom:1px solid var(--border)}
+.section-rule:last-child{border-bottom:none}
+
+/* Toast */
+.toasts{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:7px}
+.toast{padding:10px 18px;border-radius:var(--rs);font-size:12px;font-weight:500;animation:slideIn .25s ease;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.toast.success{background:var(--green);color:#000}.toast.error{background:var(--red);color:#fff}.toast.info{background:var(--blue);color:#fff}
+@keyframes slideIn{from{transform:translateX(80px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* Empty state */
+.empty{text-align:center;padding:60px 20px;color:var(--dim)}
+.empty .ico{font-size:48px;margin-bottom:12px}
+.empty p{font-size:14px;margin-bottom:6px}
+.empty .hint{font-size:12px;color:var(--dim)}
+
+/* Spinner */
+.spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-full{display:flex;align-items:center;justify-content:center;padding:80px;gap:10px;color:var(--muted);font-size:13px}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* Name input modal */
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:100;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:26px;width:420px;max-width:92vw}
+.modal h3{font-size:15px;font-weight:700;margin-bottom:14px}
+.modal .ig{margin-bottom:14px}
+.modal .ig label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);margin-bottom:5px}
+.modal input{width:100%;padding:9px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none}
+.modal input:focus{border-color:var(--blue)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+
+@media(max-width:600px){.grid{grid-template-columns:1fr}.shell{padding:16px 12px}}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <h1><span class="pulse"></span> Voice Guide Manager</h1>
+      <div class="sub">TDE Communication Personality Profiles</div>
+    </div>
+    <div class="header-actions">
+      <a href="/admin" class="btn sm">Admin Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Auth -->
+  <div class="auth-bar">
+    <label>API Key</label>
+    <input type="password" id="apiKey" placeholder="Enter your x-api-key..." />
+    <button class="btn primary sm" onclick="saveKeyAndLoad()">Connect</button>
+  </div>
+
+  <!-- Main content -->
+  <div id="app">
+    <div class="loading-full"><span class="spinner"></span> Connecting...</div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toasts" id="toasts"></div>
+
+<!-- Download name modal (hidden) -->
+<div id="nameModal" class="backdrop" style="display:none">
+  <div class="modal">
+    <h3>Download Voice Guide</h3>
+    <div class="ig">
+      <label>Person / Brand Name</label>
+      <input type="text" id="guideName" placeholder="e.g. Alex Hormozi" />
+    </div>
+    <div class="ig">
+      <label>Format</label>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <label style="font-size:12px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:4px">
+          <input type="radio" name="fmt" value="docx" checked /> .docx
+        </label>
+        <label style="font-size:12px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:4px">
+          <input type="radio" name="fmt" value="json" /> JSON
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn sm" onclick="closeModal()">Cancel</button>
+      <button class="btn primary sm" id="dlBtn" onclick="doDownload()">Download</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let KEY = localStorage.getItem('tde_key') || '';
+let collections = [];
+let previewCol = null;
+let previewData = null;
+let downloadColId = null;
+
+document.getElementById('apiKey').value = KEY;
+
+// ── API helpers ──
+
+async function api(path) {
+  const h = { 'Content-Type': 'application/json' };
+  if (KEY) h['x-api-key'] = KEY;
+  const r = await fetch(`${API}${path}`, { headers: h, credentials: 'same-origin' });
+  if (!r.ok) { const t = await r.text(); throw new Error(`${r.status}: ${t.slice(0, 200)}`); }
+  return r.json();
+}
+
+async function apiBlob(path) {
+  const h = {};
+  if (KEY) h['x-api-key'] = KEY;
+  const r = await fetch(`${API}${path}`, { headers: h, credentials: 'same-origin' });
+  if (!r.ok) { const t = await r.text(); throw new Error(`${r.status}: ${t.slice(0, 200)}`); }
+  return r.blob();
+}
+
+// ── Toast ──
+
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ── Auth ──
+
+function saveKeyAndLoad() {
+  KEY = document.getElementById('apiKey').value.trim();
+  localStorage.setItem('tde_key', KEY);
+  loadCollections();
+}
+
+// ── Load data ──
+
+async function loadCollections() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading-full"><span class="spinner"></span> Loading collections...</div>';
+
+  try {
+    const cols = await api('/collections');
+    collections = cols;
+
+    // For each collection, check CPPV and CPPW status
+    for (const col of collections) {
+      col._cppv = null;
+      col._cppw = null;
+      try { const r = await api(`/api/cppv/${col.id}`); if (r.ok) col._cppv = r.cppv; } catch {}
+      try { const r = await api(`/api/cppw/${col.id}`); if (r.ok) col._cppw = r.cppw; } catch {}
+
+      // Get source counts
+      try {
+        const stats = await api(`/collections/${col.id}/stats`);
+        col._stats = stats;
+      } catch { col._stats = null; }
+    }
+
+    render();
+  } catch (err) {
+    app.innerHTML = `<div class="empty"><div class="ico">&#9888;</div><p>Connection failed</p><div class="hint">${err.message}</div></div>`;
+  }
+}
+
+// ── Render ──
+
+function render() {
+  const app = document.getElementById('app');
+
+  // Filter to collections that have video/audio sources or existing CPP profiles
+  const withProfile = collections.filter(c => c._cppv || c._cppw);
+  const withoutProfile = collections.filter(c => !c._cppv && !c._cppw);
+
+  let html = '';
+
+  // Summary bar
+  const totalCPPV = collections.filter(c => c._cppv).length;
+  const totalCPPW = collections.filter(c => c._cppw).length;
+  html += `
+    <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 20px;flex:1;min-width:150px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);margin-bottom:6px">Collections</div>
+        <div class="mono" style="font-size:24px;font-weight:700;color:var(--blue)">${collections.length}</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 20px;flex:1;min-width:150px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);margin-bottom:6px">Spoken Profiles (CPPV)</div>
+        <div class="mono" style="font-size:24px;font-weight:700;color:var(--purple)">${totalCPPV}</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 20px;flex:1;min-width:150px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);margin-bottom:6px">Written Profiles (CPPW)</div>
+        <div class="mono" style="font-size:24px;font-weight:700;color:var(--cyan)">${totalCPPW}</div>
+      </div>
+    </div>
+  `;
+
+  // Collections with profiles
+  if (withProfile.length) {
+    html += `<h2 style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text)">Collections with Voice Profiles</h2>`;
+    html += `<div class="grid">`;
+    for (const col of withProfile) {
+      html += renderCard(col);
+    }
+    html += `</div>`;
+  }
+
+  // Collections without profiles
+  if (withoutProfile.length) {
+    html += `<h2 style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--dim)">No Profile Yet (need 3+ video/audio sources + analyzeCollection)</h2>`;
+    html += `<div class="grid">`;
+    for (const col of withoutProfile) {
+      html += renderCard(col);
+    }
+    html += `</div>`;
+  }
+
+  if (!collections.length) {
+    html = `<div class="empty"><div class="ico">&#128202;</div><p>No collections found</p><div class="hint">Ingest some YouTube videos or audio content first, then run analyzeCollection().</div></div>`;
+  }
+
+  // Preview panel
+  if (previewData && previewCol) {
+    html += renderPreview();
+  }
+
+  app.innerHTML = html;
+}
+
+function renderCard(col) {
+  const meta = typeof col.metadata === 'string' ? JSON.parse(col.metadata || '{}') : (col.metadata || {});
+  const hasCPPV = !!col._cppv;
+  const hasCPPW = !!col._cppw;
+  const sourceCount = col._stats?.sourceCount || meta.sourceCount || '?';
+  const atomCount = col._stats?.atomCount || '?';
+
+  let profileInfo = '';
+  if (hasCPPV) {
+    const cppv = col._cppv;
+    const srcCount = cppv.source_count || cppv.sources_used?.length || '?';
+    const builtAt = cppv.built_at ? new Date(cppv.built_at).toLocaleDateString() : '?';
+    profileInfo += `<span class="tag purple">CPPV: ${srcCount} sources</span>`;
+    profileInfo += `<span class="tag purple">Built: ${builtAt}</span>`;
+  }
+  if (hasCPPW) {
+    const md = col._cppw.metadata || {};
+    const emailCount = md.email_count_analyzed || '?';
+    profileInfo += `<span class="tag cyan">CPPW: ${emailCount} emails</span>`;
+  }
+
+  const canDownload = hasCPPV || hasCPPW;
+
+  return `
+    <div class="col-card">
+      <div class="name">
+        <span class="dot ${canDownload ? 'on' : 'off'}"></span>
+        ${esc(col.name || col.id)}
+      </div>
+      <div class="desc">${esc(col.description || 'No description')}</div>
+      <div class="meta">
+        <span class="tag blue">${sourceCount} sources</span>
+        <span class="tag blue">${atomCount} atoms</span>
+        ${profileInfo}
+      </div>
+      <div class="actions">
+        ${canDownload ? `
+          <button class="btn green sm" onclick="openDownload('${esc(col.id)}', '${esc(col.name || col.id)}')">
+            Download Voice Guide
+          </button>
+          <button class="btn sm" onclick="previewGuide('${esc(col.id)}', '${esc(col.name || col.id)}')">
+            Preview
+          </button>
+        ` : `
+          <button class="btn sm" disabled>No profile available</button>
+        `}
+        <button class="btn sm" onclick="viewRawJSON('${esc(col.id)}')">Raw JSON</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderPreview() {
+  if (!previewData || !previewData.sections) return '';
+  const sections = previewData.sections;
+  let html = `
+    <div class="preview" id="previewPanel">
+      <div class="preview-header">
+        <h3>${esc(previewData.name || previewCol)} — Voice Guide Preview</h3>
+        <button class="btn sm" onclick="closePreview()">Close</button>
+      </div>
+      <div class="preview-body">
+  `;
+  for (const s of sections) {
+    html += `<div class="section-block">`;
+    html += `<div class="section-title">${s.num}) ${esc(s.title)}</div>`;
+    for (const rule of (s.rules || [])) {
+      html += `<div class="section-rule">${esc(rule)}</div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+// ── Actions ──
+
+function openDownload(colId, colName) {
+  downloadColId = colId;
+  document.getElementById('guideName').value = colName;
+  document.getElementById('nameModal').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('nameModal').style.display = 'none';
+  downloadColId = null;
+}
+
+async function doDownload() {
+  const name = document.getElementById('guideName').value.trim() || downloadColId;
+  const fmt = document.querySelector('input[name="fmt"]:checked').value;
+  const btn = document.getElementById('dlBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Generating...';
+
+  try {
+    if (fmt === 'json') {
+      const data = await api(`/api/cppv/${downloadColId}/voice-guide?name=${encodeURIComponent(name)}&format=json`);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      downloadBlob(blob, `${name.replace(/[^a-zA-Z0-9_-]/g, '_')}_Voice_Guide.json`);
+      toast('JSON voice guide downloaded!', 'success');
+    } else {
+      const blob = await apiBlob(`/api/cppv/${downloadColId}/voice-guide?name=${encodeURIComponent(name)}`);
+      downloadBlob(blob, `${name.replace(/[^a-zA-Z0-9_-]/g, '_')}_Voice_Guide.docx`);
+      toast('Voice guide .docx downloaded!', 'success');
+    }
+    closeModal();
+  } catch (err) {
+    toast(`Download failed: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Download';
+  }
+}
+
+async function previewGuide(colId, colName) {
+  previewCol = colId;
+  previewData = null;
+  render();
+
+  try {
+    toast('Generating preview...', 'info');
+    const data = await api(`/api/cppv/${colId}/voice-guide?name=${encodeURIComponent(colName)}&format=json`);
+    previewData = data;
+    render();
+    setTimeout(() => {
+      const el = document.getElementById('previewPanel');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  } catch (err) {
+    toast(`Preview failed: ${err.message}`, 'error');
+    previewCol = null;
+    render();
+  }
+}
+
+async function viewRawJSON(colId) {
+  try {
+    // Try CPPV first, then CPPW
+    let data;
+    try { data = await api(`/api/cppv/${colId}`); } catch {}
+    if (!data || !data.ok) {
+      try { data = await api(`/api/cppw/${colId}`); } catch {}
+    }
+    if (!data) { toast('No profile data found', 'error'); return; }
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  } catch (err) {
+    toast(`Error: ${err.message}`, 'error');
+  }
+}
+
+function closePreview() {
+  previewCol = null;
+  previewData = null;
+  render();
+}
+
+// ── Helpers ──
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Init ──
+if (KEY) loadCollections();
+else {
+  document.getElementById('app').innerHTML = '<div class="empty"><div class="ico">&#128273;</div><p>Enter your API key above to connect</p><div class="hint">Same key you use for the admin dashboard.</div></div>';
+}
+</script>
+</body>
+</html>
