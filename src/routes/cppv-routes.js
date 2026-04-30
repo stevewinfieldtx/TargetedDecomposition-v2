@@ -113,5 +113,44 @@ module.exports = function mountCPPVRoutes(app, auth, engine) {
     }
   });
 
-  console.log('  CPPV Routes: mounted (/api/cppv/:collectionId)');
+  // ── GET /api/cpp-status ─────────────────────────────────────────────────────
+  // Bulk endpoint: returns CPPV and CPPW presence for ALL collections in one call.
+  // Used by the Voice Guide dashboard to avoid N+1 API calls.
+  app.get('/api/cpp-status', auth, async (req, res) => {
+    try {
+      const collections = await engine.listCollections();
+      const results = {};
+
+      for (const col of collections) {
+        const status = { cppv: null, cppw: null };
+        try {
+          const cppv = await engine.store.getIntelligence(col.id, 'cppv');
+          if (cppv && cppv.data && Object.keys(cppv.data).length > 0) {
+            status.cppv = {
+              profile_type: cppv.data.profile_type || 'CPPV',
+              source_count: cppv.data.source_count || cppv.data.sources_used?.length || null,
+              built_at: cppv.data.built_at || null,
+            };
+          }
+        } catch {}
+        try {
+          const cppw = await engine.store.getIntelligence(col.id, 'cppw');
+          if (cppw && cppw.data && Object.keys(cppw.data).length > 0) {
+            status.cppw = {
+              profile_type: cppw.data.profile_type || 'CPPW',
+              email_count: cppw.data.metadata?.email_count_analyzed || null,
+              received_at: cppw.data.received_at || null,
+            };
+          }
+        } catch {}
+        results[col.id] = status;
+      }
+
+      return res.json({ ok: true, collections: results });
+    } catch (err) {
+      return res.status(500).json({ error: 'failed to retrieve CPP status', detail: err.message });
+    }
+  });
+
+  console.log('  CPPV Routes: mounted (/api/cppv/:collectionId, /api/cpp-status)');
 };

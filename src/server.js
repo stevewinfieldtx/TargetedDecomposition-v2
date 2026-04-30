@@ -848,7 +848,7 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
-app.get('/voice-guides', (req, res) => {
+app.get('/cpp-v', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'voice-guides.html'));
 });
 

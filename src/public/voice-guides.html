@@ -208,21 +208,20 @@ async function loadCollections() {
   app.innerHTML = '<div class="loading-full"><span class="spinner"></span> Loading collections...</div>';
 
   try {
-    const cols = await api('/collections');
+    // Two calls total instead of 3 per collection
+    const [cols, cppStatus] = await Promise.all([
+      api('/collections'),
+      api('/api/cpp-status'),
+    ]);
     collections = cols;
 
-    // For each collection, check CPPV and CPPW status
+    const statusMap = cppStatus.collections || {};
     for (const col of collections) {
-      col._cppv = null;
-      col._cppw = null;
-      try { const r = await api(`/api/cppv/${col.id}`); if (r.ok) col._cppv = r.cppv; } catch {}
-      try { const r = await api(`/api/cppw/${col.id}`); if (r.ok) col._cppw = r.cppw; } catch {}
-
-      // Get source counts
-      try {
-        const stats = await api(`/collections/${col.id}/stats`);
-        col._stats = stats;
-      } catch { col._stats = null; }
+      const s = statusMap[col.id] || {};
+      col._cppv = s.cppv || null;
+      col._cppw = s.cppw || null;
+      // Stats already come from /collections endpoint
+      col._stats = col.stats || null;
     }
 
     render();
@@ -298,20 +297,19 @@ function renderCard(col) {
   const meta = typeof col.metadata === 'string' ? JSON.parse(col.metadata || '{}') : (col.metadata || {});
   const hasCPPV = !!col._cppv;
   const hasCPPW = !!col._cppw;
-  const sourceCount = col._stats?.sourceCount || meta.sourceCount || '?';
-  const atomCount = col._stats?.atomCount || '?';
+  const stats = col._stats || col.stats || {};
+  const sourceCount = stats.sourceCount || '?';
+  const atomCount = stats.atomCount || '?';
 
   let profileInfo = '';
   if (hasCPPV) {
-    const cppv = col._cppv;
-    const srcCount = cppv.source_count || cppv.sources_used?.length || '?';
-    const builtAt = cppv.built_at ? new Date(cppv.built_at).toLocaleDateString() : '?';
+    const srcCount = col._cppv.source_count || '?';
+    const builtAt = col._cppv.built_at ? new Date(col._cppv.built_at).toLocaleDateString() : '?';
     profileInfo += `<span class="tag purple">CPPV: ${srcCount} sources</span>`;
     profileInfo += `<span class="tag purple">Built: ${builtAt}</span>`;
   }
   if (hasCPPW) {
-    const md = col._cppw.metadata || {};
-    const emailCount = md.email_count_analyzed || '?';
+    const emailCount = col._cppw.email_count || '?';
     profileInfo += `<span class="tag cyan">CPPW: ${emailCount} emails</span>`;
   }
 
