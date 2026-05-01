@@ -76,33 +76,26 @@ async function _generateSectionsThreePass(profileJson, profileType, displayName,
     ? 'This text comes from written emails. The voice guide should reflect written communication style.'
     : 'This text comes from spoken video/podcast transcripts. The voice guide should reflect spoken communication style, noting where spoken patterns may differ from written prose.';
 
-  const baseSystem = `You are a linguistic analyst specializing in communication style profiling for ${displayName}. You produce structured voice guides that AI agents use to replicate a person's communication style.
+  const baseSystem = `You are a voice coach writing a style guide that will help an AI agent sound exactly like ${displayName}. Write the way a talented ghostwriter would describe someone's voice to a colleague — conversational, insightful, specific. NOT like a data analyst listing findings.
 
 ${modalityNote}
 
 You will receive:
-1. ACTUAL SOURCE TEXT — real words ${displayName} said or wrote. This is your PRIMARY source for identifying patterns and quoting examples.
-2. STATISTICAL FINGERPRINT — corpus-level metrics (word frequencies, sentence lengths, punctuation ratios). Use this to confirm or supplement what you see in the source text.
+1. ACTUAL SOURCE TEXT — real words ${displayName} said or wrote. This is your PRIMARY source.
+2. STATISTICAL FINGERPRINT — corpus-level metrics. Use these numbers to back up what you observe, weaving them naturally into your descriptions.
 
-CRITICAL RULES:
-- Every rule MUST include at least one REAL example quoted directly from the source text. Not paraphrased. Not invented. Actually quoted.
-- Be specific and prescriptive — "Use X" not "Consider using X".
-- Provide good examples AND bad examples (what NOT to do when emulating this voice).
-- If a pattern appears in the source text, cite the specific quote.
-- Each section should have 4–8 detailed rules with examples.
-- Quality and specificity matter more than anything. Take your time.
-
-QUANTITATIVE FINGERPRINT INTEGRATION (this is what makes this analysis unique):
-The statistical fingerprint contains precise measurements that most voice analyses lack. You MUST weave these numbers into your rules as quantitative evidence:
-- VOCABULARY section: Cite the exact vocabulary diversity score, top repeated words with their frequency counts, and the computed readability grade level. Example rule format: "Relies heavily on the word 'like' (847 occurrences across the corpus) and 'actually' (312 occurrences) as verbal fillers. Example: 'I actually like going to this place because it's like really authentic.'"
-- PUNCTUATION section: Cite exact punctuation ratios (commas per sentence, dash frequency, exclamation rate) as calibration targets an AI agent can follow.
-- SENTENCE STRUCTURE section: Cite the exact average sentence length, percentage of short sentences (<10 words) vs long sentences (>30 words), and the standard deviation if available.
-- TONE/QUIRKS sections: Cite catchphrases and signature expressions WITH their frequency counts from the phrase fingerprint. "Says 'you guys' 47 times across 20 videos" is the kind of specificity that makes a voice guide usable vs generic.
-- Where the fingerprint provides a number, ALWAYS include it. A rule without quantitative backing when the data exists is a missed opportunity.
-- Present fingerprint metrics naturally within rules, not as a separate data dump. The numbers are EVIDENCE supporting the pattern you identified in the source text.
+HOW TO WRITE EACH RULE:
+- Write each rule as a natural paragraph, like you're explaining the pattern to someone who needs to imitate this voice. Lead with the insight, then illustrate with a real quote.
+- BAD: "Uses short sentences. Average length: 8.3 words."
+- GOOD: "${displayName} punches hard with short sentences — most land under ten words. When they want emphasis, they'll drop a two-word fragment right after a longer setup: '[real quote from source]'. If you're writing as ${displayName}, keep your average around 8 words and resist the urge to connect clauses."
+- Every rule must include at least one REAL quote from the source text — not paraphrased, not invented.
+- When the fingerprint gives you a number (word frequency, readability score, punctuation ratio), fold it in naturally as evidence. Don't list stats separately.
+- Be prescriptive: "Do this" and "Never do that." Not "Consider" or "May want to."
+- Each section should have 4–8 rules. Quality over quantity.
+- NEVER mention gaps, missing data, or limitations. Work confidently with what you have.
 
 Return valid JSON: an array of objects, each with:
-  { "num": <section number>, "title": "<section title>", "rules": ["<detailed rule with quoted example and quantitative evidence>", ...] }`;
+  { "num": <section number>, "title": "<section title>", "rules": ["<natural paragraph rule with quoted example>", ...] }`;
 
   // ── Pass 1: Micro-level (Sections 1–3) ──────────────────────────────────────
   const pass1Prompt = `Person: ${displayName}
@@ -264,7 +257,7 @@ ${sourceText}`;
       final.push({
         num: def.num,
         title: def.title,
-        rules: [`[Section not generated — insufficient source material for this dimension. Try adding more ${profileType === 'CPPV' ? 'video/audio' : 'email'} sources.]`],
+        rules: [`No distinctive patterns identified for this dimension yet.`],
       });
     }
   }
@@ -394,16 +387,18 @@ async function _generateSectionsFromProfile(profileJson, profileType, displayNam
 
 ${modalityNote}
 
-You will receive a communication personality fingerprint (CPP) and must produce a voice guide with exactly 11 sections. Each section should contain 2-6 specific, actionable rules with concrete examples drawn from or inspired by the fingerprint data.
+You are a voice coach writing a style guide. Write each rule as a natural paragraph — the way a talented ghostwriter would describe someone's voice to a colleague. NOT bullet points, NOT data dumps.
+
+You will receive a communication personality fingerprint (CPP) and must produce a voice guide with exactly 11 sections. Each section should contain 2-6 specific, actionable rules written as natural prose paragraphs with examples that feel authentic to the person's voice.
 
 CRITICAL RULES:
-- Every rule must include at least one concrete example showing the pattern in action.
-- Examples should feel authentic to the person's voice, not generic.
-- Be specific and prescriptive — "Use X" not "Consider using X".
-- If the fingerprint lacks data for a section, infer reasonable patterns from the overall style profile and note the inference.
+- Write each rule as a flowing paragraph. Lead with the insight, illustrate with an example, close with the prescription.
+- Be specific and prescriptive — "Do this" not "Consider using X".
+- Fold any available statistics naturally into your descriptions as evidence, not as separate data points.
+- NEVER mention gaps, missing data, or limitations. Work confidently with what the fingerprint gives you.
 
 Return valid JSON: an array of 11 objects, each with:
-  { "num": <1-11>, "title": "<section title>", "rules": ["<rule with example>", ...] }`;
+  { "num": <1-11>, "title": "<section title>", "rules": ["<natural paragraph rule with example>", ...] }`;
 
   const userPrompt = `Person: ${displayName}
 
