@@ -495,7 +495,8 @@ async function buildProfile(colId) {
       toast(`Voice profile built from ${result.sources_used} sources!`, 'success');
       await loadCollections();
     } else if (result.reasons) {
-      toast(`CPPV skipped: ${result.reasons.join('; ')}`, 'error');
+      const debugInfo = result.debug ? ` [${result.debug.videoAudioReady} video sources, ${result.debug.segmentsWithText} with text, types: ${result.debug.sourceTypes?.join(',')}]` : '';
+      toast(`CPPV skipped: ${result.reasons.join('; ')}${debugInfo}`, 'error');
       render();
     } else {
       toast('Build completed but returned unexpected result', 'error');

@@ -615,13 +615,34 @@ app.post('/build-cppv/:collectionId', auth, async (req, res) => {
     if (result) {
       res.json({ ok: true, status: 'cppv_built', sources_used: result.source_count });
     } else {
-      // _buildCPPV returns null with a console.log explaining why
+      // Diagnose ALL the reasons _buildCPPV can return null
       const sources = await engine.store.getSources(req.params.collectionId);
-      const videoAudio = sources.filter(s => s.status === 'ready' && ['youtube','audio','podcast','mp3','mp4'].includes(s.source_type));
+      const readySources = sources.filter(s => s.status === 'ready');
+      const VIDEO_TYPES = new Set(['youtube','audio','podcast','mp3','mp4']);
+      const videoAudio = readySources.filter(s => VIDEO_TYPES.has(s.source_type));
+      
+      // Check atoms text length (same logic as _buildCPPV)
+      let segmentCount = 0;
+      for (const s of videoAudio) {
+        try {
+          const atoms = await engine.store.getAtoms(req.params.collectionId, s.id);
+          const text = atoms.map(a => a.text).join(' ');
+          if (text.length > 20) segmentCount++;
+        } catch {}
+      }
+
       const reasons = [];
       if (!config.TRUEWRITING_API_URL) reasons.push('TRUEWRITING_API_URL not configured on Railway');
-      if (videoAudio.length < 3) reasons.push(`Need 3+ video/audio sources (have ${videoAudio.length})`);
-      res.json({ ok: false, status: 'cppv_skipped', reasons });
+      if (videoAudio.length === 0) reasons.push(`No video/audio sources found (${readySources.length} ready sources, but types are: ${[...new Set(readySources.map(s=>s.source_type))].join(', ') || 'none'})`);
+      else if (videoAudio.length < 3) reasons.push(`Need 3+ video/audio sources (have ${videoAudio.length})`);
+      if (segmentCount < 3 && videoAudio.length >= 3) reasons.push(`Only ${segmentCount} of ${videoAudio.length} video sources have enough atom text (need 3+)`);
+      if (!reasons.length) reasons.push('Unknown — check Railway logs for CPPV lines');
+
+      res.json({ ok: false, status: 'cppv_skipped', reasons,
+        debug: { totalSources: sources.length, readySources: readySources.length, 
+                 videoAudioReady: videoAudio.length, segmentsWithText: segmentCount,
+                 sourceTypes: [...new Set(sources.map(s=>s.source_type))] }
+      });
     }
   } catch (err) {
     console.error(`  [build-cppv] Error: ${err.message}`);
