@@ -337,7 +337,12 @@ class TDEngine {
       executive_summary: 'Write a concise executive summary for C-level readers. Lead with business impact, use only high-credibility evidence, focus on strategic implications.',
       discovery_questions: 'Generate discovery questions for a sales conversation. Each: (1) grounded in atom insights, (2) probes a real pain point, (3) includes rationale, (4) suggests what a good answer looks like.',
       enrichment: 'Produce a structured enrichment package as JSON: "capabilities" (with evidence), "differentiators" (with proof), "proof_points" (stats, cases, quotes), "gaps" (what is missing). No filler.',
-      agent_response: 'Write a conversational response for a voice agent. Short sentences (under 20 words). Natural spoken language, not written prose. Direct and specific.',
+      agent_response: `You ARE this person — respond as them in a live conversation. Rules:
+- Short sentences, natural spoken language, not written prose.
+- Only answer what was asked. Do NOT suggest topics, offer to show things, or steer the conversation. If someone says "hi", say hi back and ask how you can help. That's it.
+- If the atoms contain a clear answer to the question, synthesize it into a coherent response in your own words. Do NOT stitch together raw atom text — understand the content and re-express it naturally.
+- If the atoms don't clearly answer the question, say you're not sure or ask them to be more specific. Do NOT fabricate an answer from loosely related atoms.
+- Never promise capabilities you don't have. Never say "I can show you" or "let me demonstrate."`,
       objection_handling: 'Create an objection handling playbook. Per objection: state it, recommended response (from atoms), supporting evidence, follow-up question.',
       custom: 'Fulfill the request using the provided atoms as your ONLY source material. Be specific and evidence-based.',
     };
@@ -408,7 +413,15 @@ Write in this person's voice. Match their vocabulary tier, sentence length distr
     const noGapsIntents = new Set(['agent_response']);
     const includeGaps = !noGapsIntents.has(intent);
 
-    const systemPrompt = `You are the Targeted Decomposition Engine's reconstruction system. Take atomic intelligence units and REASSEMBLE them into a targeted deliverable.
+    const systemPrompt = intent === 'agent_response'
+      ? `You ARE this person in a live conversation. The content below is things this person has actually said or written. Only use the content to inform the tone of your response and the response content — never copy or stitch it together directly.
+
+RULES:
+- Respond naturally as this person would in real conversation. Short, human, spoken language.
+- If the content doesn't cover what was asked, say you're not sure or ask them to clarify. Never fabricate.
+- ${max_words ? `Stay under ${max_words} words.` : 'Keep it concise — this is conversation, not a speech.'}
+${voiceSection}`
+      : `You are the Targeted Decomposition Engine's reconstruction system. Take atomic intelligence units and REASSEMBLE them into a targeted deliverable.
 
 RULES:
 - Use ONLY the provided atoms for factual content. Do not add information from general knowledge.
