@@ -93,7 +93,7 @@ module.exports = function mountCPPVRoutes(app, auth, engine) {
 
       // 3. Generate voice guide (lazy require so routes mount even if docx pkg missing)
       const { generateVoiceGuide } = require('../utils/voice-guide-renderer');
-      const guide = await generateVoiceGuide(intel.data, displayName, engine);
+      const guide = await generateVoiceGuide(intel.data, displayName, engine, collectionId);
 
       // 4. Return as JSON or .docx
       if (format === 'json') {
