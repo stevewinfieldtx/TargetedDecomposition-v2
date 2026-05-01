@@ -307,6 +307,7 @@ class TDEngine {
     if (!query) throw new Error('query is required for reconstruction');
     const cols = Array.isArray(collectionIds) ? collectionIds : [collectionIds];
 
+    const _t = { start: Date.now() };
     console.log(`\n  Reconstruct: "${intent}" across [${cols.join(', ')}]${in_voice ? ' [voice-aware]' : ''}`);
     console.log(`  Query: ${query.slice(0, 80)}...`);
     console.log(`  Filters: ${JSON.stringify(filters)}`);
@@ -319,6 +320,8 @@ class TDEngine {
         allResults.push(...results.map(r => ({ ...r, collectionId: colId })));
       } catch (err) { console.log(`  Search failed for ${colId}: ${err.message}`); }
     }
+    _t.search = Date.now();
+    console.log(`  ⏱ Search: ${((_t.search - _t.start) / 1000).toFixed(2)}s`);
     allResults.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
     const topAtoms = allResults.slice(0, max_atoms);
 
@@ -357,47 +360,68 @@ class TDEngine {
     // Only when in_voice is true AND we have a specific collection to source the voice from.
     let voiceSection = '';
     let voiceTypeUsed = 'none';
+    _t.voiceStart = Date.now();
     if (in_voice) {
       const voiceCollectionId = voice_collection || cols[0];
       try {
-        const { profile, type } = await this.getVoiceProfile(voiceCollectionId);
-        if (profile) {
-          voiceTypeUsed = type;
-          const profilePayload = type === 'CPPV' && profile.profile ? profile.profile : profile;
-          const frameDescription = type === 'CPPW'
-            ? "This is the person's WRITTEN-style fingerprint, built by TrueWriting from their actual emails. It is the highest-fidelity guide to how they write."
-            : "This is the person's SPOKEN-style fingerprint, derived from their video and podcast content. Use it to approximate how they would write, recognizing that spoken patterns don't translate perfectly to written prose.";
+        // Prefer the generated voice guide (compact, human-readable rules) over
+        // the raw fingerprint (huge JSON blob of statistical data). The guide was
+        // built FROM the fingerprint — no need to send both.
+        const voiceGuide = await this.store.getIntelligence(voiceCollectionId, 'voice_guide_sections');
+        if (voiceGuide && voiceGuide.data && voiceGuide.data.sections) {
+          voiceTypeUsed = 'voice_guide';
+          const guideText = voiceGuide.data.sections
+            .map(s => `${s.num}. ${s.title}\n${s.rules.join('\n')}`)
+            .join('\n\n');
           voiceSection = `
-VOICE FINGERPRINT (type: ${type})
-${frameDescription}
+VOICE GUIDE:
+${guideText}
 
+Write in this person's voice. Follow the rules above — they capture vocabulary, sentence patterns, tone, and quirks. Use their catchphrases naturally where they fit. Do NOT fall into generic "ChatGPT-style" language unless the guide says that's how they talk.
+`;
+          console.log(`  Voice: using generated voice guide (${guideText.length} chars)`);
+        } else {
+          // Fall back to raw fingerprint if no voice guide has been generated yet
+          const { profile, type } = await this.getVoiceProfile(voiceCollectionId);
+          if (profile) {
+            voiceTypeUsed = type;
+            const profilePayload = type === 'CPPV' && profile.profile ? profile.profile : profile;
+            voiceSection = `
+VOICE FINGERPRINT (type: ${type})
 ${JSON.stringify(profilePayload, null, 2)}
 
-VOICE RULES:
-- Write in this person's voice. Match their vocabulary tier, sentence length distribution, rhetorical patterns, signature phrases, and emotional range.
-- Use their catchphrases and unique expressions naturally where they fit — do not force them.
-- Do NOT fall into generic "ChatGPT-style" language (em-dashes used for pauses, "Furthermore"/"Moreover", hedged corporate phrasing) unless their fingerprint shows those are native to them.
-- If the fingerprint and the required content are at odds, preserve the voice over producing the most polished output.
+Write in this person's voice. Match their vocabulary tier, sentence length distribution, rhetorical patterns, signature phrases, and emotional range. Use their catchphrases naturally where they fit. Do NOT fall into generic "ChatGPT-style" language.
 `;
-        } else {
-          console.log(`  Voice: no CPPW or CPPV available for ${voiceCollectionId}, proceeding without voice injection`);
+            console.log(`  Voice: no voice guide found, falling back to raw ${type} fingerprint (${voiceSection.length} chars)`);
+          } else {
+            console.log(`  Voice: no CPPW or CPPV available for ${voiceCollectionId}, proceeding without voice injection`);
+          }
         }
       } catch (err) {
         console.log(`  Voice lookup failed: ${err.message}, proceeding without voice injection`);
       }
     }
+    _t.voice = Date.now();
+    console.log(`  ⏱ Voice profile: ${((_t.voice - _t.voiceStart) / 1000).toFixed(2)}s (type: ${voiceTypeUsed}, prompt payload: ${voiceSection.length} chars)`);
+
+    // Intents that should never show GAPS (conversational, user-facing)
+    const noGapsIntents = new Set(['agent_response']);
+    const includeGaps = !noGapsIntents.has(intent);
 
     const systemPrompt = `You are the Targeted Decomposition Engine's reconstruction system. Take atomic intelligence units and REASSEMBLE them into a targeted deliverable.
 
 RULES:
 - Use ONLY the provided atoms for factual content. Do not add information from general knowledge.
 - Every factual claim must trace to a specific atom.
-- If atoms are insufficient, state what is missing in a GAPS section at the end.
+${includeGaps ? '- If atoms are insufficient, state what is missing in a GAPS section at the end.' : '- If atoms are insufficient for a complete answer, work confidently with what you have. Do NOT mention gaps, missing data, or limitations.'}
 - ${max_words ? `Stay under ${max_words} words.` : 'Be comprehensive but not padded.'}
 - ${format === 'json' ? 'Return valid JSON only. No markdown fences.' : format === 'markdown' ? 'Use markdown formatting.' : 'Use clean prose.'}
 ${voiceSection}`;
 
-    const userPrompt = `INTENT: ${intent}\n${intentInstruction}\n\n${context ? `CONTEXT: ${context}\n` : ''}${filterDesc ? `AUDIENCE FILTERS: ${filterDesc}\n` : ''}\nQUERY: ${query}\n\nATOMS (${topAtoms.length} of ${allResults.length} matches):\n\n${atomContext}\n\n${format === 'json' ? 'Respond with valid JSON only.' : 'After your main output, include a GAPS section listing information the atoms could NOT provide.'}`;
+    const gapInstruction = includeGaps
+      ? 'After your main output, include a GAPS section listing information the atoms could NOT provide.'
+      : 'Do NOT include a GAPS section. Just deliver the response.';
+    const userPrompt = `INTENT: ${intent}\n${intentInstruction}\n\n${context ? `CONTEXT: ${context}\n` : ''}${filterDesc ? `AUDIENCE FILTERS: ${filterDesc}\n` : ''}\nQUERY: ${query}\n\nATOMS (${topAtoms.length} of ${allResults.length} matches):\n\n${atomContext}\n\n${format === 'json' ? 'Respond with valid JSON only.' : gapInstruction}`;
 
     // Step 3: LLM reconstruction (fast path — Cerebras if configured, else OpenRouter CONTENT_MODEL)
     console.log(`  Reconstructing (${intent}, ${format}, max ${max_words} words)...`);
@@ -408,7 +432,8 @@ ${voiceSection}`;
       temperature: intent === 'enrichment' ? 0.2 : 0.4,
     });
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`  Reconstruction complete (${elapsed}s)`);
+    const totalElapsed = ((Date.now() - _t.start) / 1000).toFixed(1);
+    console.log(`  ⏱ LLM call: ${elapsed}s | Total reconstruct: ${totalElapsed}s`);
 
     if (!raw) {
       return { output: 'Reconstruction failed.', atoms_used: topAtoms, atoms_available: allResults.length, confidence: 'failed', gaps: ['LLM returned no response'] };
