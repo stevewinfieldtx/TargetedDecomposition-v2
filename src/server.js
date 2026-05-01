@@ -902,6 +902,10 @@ app.get('/cpp-v', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'voice-guides.html'));
 });
 
+app.get('/voice-studio', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'voice-studio.html'));
+});
+
 // Wait for async routes (CPPV, CPPW, Intel, Research) to mount
 // BEFORE registering the catch-all 404 and starting the server.
 // Without this, the catch-all registers first and blocks the async routes.
