@@ -35,6 +35,12 @@ const youtube = require('../ingest/youtube');
 const MAX_AUTO_RETRIES = 2;
 const AUTO_RETRY_DELAYS = [10000, 30000]; // 10s first, 30s second
 
+function _extractYouTubeId(url) {
+  if (!url) return null;
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
 class TDEngine {
   constructor(dataDir) {
     this.store = new Store(dataDir || config.DATA_DIR);
@@ -486,13 +492,52 @@ ${voiceSection}`;
     else if (topAtoms.length < 7) confidence = 'medium';
     if (gaps.length > 3) confidence = confidence === 'high' ? 'medium' : 'low';
 
+    // Step 5: Build video references (top 2-3 relevant YouTube sources with timestamps)
+    let video_references = [];
+    if (intent === 'agent_response') {
+      try {
+        // Deduplicate by source, pick the top-scoring atom per source
+        const sourceMap = new Map();
+        for (const atom of topAtoms) {
+          if (!atom.sourceId) continue;
+          if (!sourceMap.has(atom.sourceId) || (atom.similarity || 0) > (sourceMap.get(atom.sourceId).similarity || 0)) {
+            sourceMap.set(atom.sourceId, atom);
+          }
+        }
+        // Fetch source details for top 3 unique sources
+        const topSourceIds = [...sourceMap.keys()].slice(0, 3);
+        for (const srcId of topSourceIds) {
+          const atom = sourceMap.get(srcId);
+          const colId = atom.collectionId || cols[0];
+          const source = await this.store.getSource(colId, srcId);
+          if (source && source.source_type === 'youtube' && source.source_url) {
+            const videoId = _extractYouTubeId(source.source_url);
+            if (videoId) {
+              const startSeconds = atom.startTime ? Math.floor(atom.startTime) : 0;
+              video_references.push({
+                title: source.title || 'Untitled',
+                video_id: videoId,
+                thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+                url: `https://www.youtube.com/watch?v=${videoId}${startSeconds ? `&t=${startSeconds}` : ''}`,
+                timestamp: startSeconds,
+                timestamp_display: startSeconds ? `${Math.floor(startSeconds / 60)}:${String(startSeconds % 60).padStart(2, '0')}` : null,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.log(`  Video references: failed (${err.message})`);
+      }
+    }
+
     return {
       output, atoms_used: topAtoms, atoms_available: allResults.length, confidence, gaps,
+      video_references,
       meta: {
         intent, collections: cols, filters,
         elapsed_seconds: parseFloat(elapsed),
         atoms_retrieved: topAtoms.length,
-        voice_type_used: voiceTypeUsed, // 'CPPW' | 'CPPV' | 'none'
+        voice_type_used: voiceTypeUsed, // 'CPPW' | 'CPPV' | 'voice_guide' | 'none'
       },
     };
   }

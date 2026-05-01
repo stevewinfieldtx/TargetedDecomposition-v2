@@ -133,6 +133,38 @@ select:disabled { opacity: 0.4; cursor: not-allowed; }
   font-size: 11px; color: var(--dim);
 }
 
+/* ── Video reference cards ── */
+.video-refs {
+  display: flex; gap: 10px; margin-top: 12px; overflow-x: auto;
+  padding-bottom: 4px;
+}
+.video-card {
+  flex-shrink: 0; width: 180px; text-decoration: none;
+  border-radius: 8px; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border);
+  transition: border-color 0.2s, transform 0.2s;
+}
+.video-card:hover {
+  border-color: var(--cyan); transform: translateY(-2px);
+}
+.video-thumb-wrap {
+  position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden;
+}
+.video-thumb {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.video-timestamp {
+  position: absolute; bottom: 4px; right: 4px;
+  background: rgba(0,0,0,0.85); color: #fff;
+  font-size: 11px; font-weight: 600; padding: 2px 6px;
+  border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+}
+.video-title {
+  padding: 8px 10px; font-size: 11px; font-weight: 500;
+  color: var(--muted); line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 .msg.system {
   align-self: center; max-width: 100%;
 }
@@ -430,14 +462,11 @@ async function sendMessage() {
 
     const atomCount = result.atoms_used?.length || 0;
     const confidence = result.confidence || 'unknown';
-    const gaps = result.gaps?.length ? result.gaps : [];
 
     let response = result.output || 'No response generated.';
-    let meta = `${atomCount} atoms · ${confidence} confidence`;
-    if (gaps.length) meta += ` · ${gaps.length} gap${gaps.length > 1 ? 's' : ''}`;
-    meta += ` · voice: ${result.meta?.voice_type_used || 'none'}`;
+    let meta = `${atomCount} atoms · ${confidence} confidence · voice: ${result.meta?.voice_type_used || 'none'}`;
 
-    messages.push({ role: 'assistant', content: response, meta });
+    messages.push({ role: 'assistant', content: response, meta, videos: result.video_references || [] });
   } catch (err) {
     messages.push({ role: 'assistant', content: `Error: ${err.message}`, meta: 'failed' });
   }
@@ -477,10 +506,22 @@ function renderChat() {
       </div>`;
     } else {
       const initial = (selectedInfluencer.name || '?')[0].toUpperCase();
+      let videoHtml = '';
+      if (msg.videos && msg.videos.length) {
+        videoHtml = `<div class="video-refs">${msg.videos.map(v => `
+          <a href="${esc(v.url)}" target="_blank" class="video-card">
+            <div class="video-thumb-wrap">
+              <img src="${esc(v.thumbnail)}" alt="${esc(v.title)}" class="video-thumb" />
+              ${v.timestamp_display ? `<span class="video-timestamp">${esc(v.timestamp_display)}</span>` : ''}
+            </div>
+            <div class="video-title">${esc(v.title)}</div>
+          </a>`).join('')}</div>`;
+      }
       html += `<div class="msg assistant">
         <div class="msg-avatar">${initial}</div>
         <div class="msg-bubble">
           ${escHtml(msg.content)}
+          ${videoHtml}
           ${msg.meta ? `<div class="atoms-used">${esc(msg.meta)}</div>` : ''}
         </div>
       </div>`;
