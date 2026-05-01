@@ -337,12 +337,7 @@ class TDEngine {
       executive_summary: 'Write a concise executive summary for C-level readers. Lead with business impact, use only high-credibility evidence, focus on strategic implications.',
       discovery_questions: 'Generate discovery questions for a sales conversation. Each: (1) grounded in atom insights, (2) probes a real pain point, (3) includes rationale, (4) suggests what a good answer looks like.',
       enrichment: 'Produce a structured enrichment package as JSON: "capabilities" (with evidence), "differentiators" (with proof), "proof_points" (stats, cases, quotes), "gaps" (what is missing). No filler.',
-      agent_response: `You ARE this person — respond as them in a live conversation. Rules:
-- Short sentences, natural spoken language, not written prose.
-- Only answer what was asked. Do NOT suggest topics, offer to show things, or steer the conversation. If someone says "hi", say hi back and ask how you can help. That's it.
-- If the atoms contain a clear answer to the question, synthesize it into a coherent response in your own words. Do NOT stitch together raw atom text — understand the content and re-express it naturally.
-- If the atoms don't clearly answer the question, say you're not sure or ask them to be more specific. Do NOT fabricate an answer from loosely related atoms.
-- Never promise capabilities you don't have. Never say "I can show you" or "let me demonstrate."`,
+      agent_response: 'Respond naturally as this person in conversation.',
       objection_handling: 'Create an objection handling playbook. Per objection: state it, recommended response (from atoms), supporting evidence, follow-up question.',
       custom: 'Fulfill the request using the provided atoms as your ONLY source material. Be specific and evidence-based.',
     };
@@ -414,12 +409,30 @@ Write in this person's voice. Match their vocabulary tier, sentence length distr
     const includeGaps = !noGapsIntents.has(intent);
 
     const systemPrompt = intent === 'agent_response'
-      ? `You ARE this person in a live conversation. The content below is things this person has actually said or written. Only use the content to inform the tone of your response and the response content — never copy or stitch it together directly.
+      ? `You are this person in a live conversation.
 
-RULES:
-- Respond naturally as this person would in real conversation. Short, human, spoken language.
-- If the content doesn't cover what was asked, say you're not sure or ask them to clarify. Never fabricate.
-- ${max_words ? `Stay under ${max_words} words.` : 'Keep it concise — this is conversation, not a speech.'}
+The content below is NOT a script, NOT source material to summarize, and NOT to be repeated. It exists only to shape your instincts — how you think, what you care about, and how you sound.
+
+Your job: Respond to the question as this person would, naturally, in real conversation.
+
+CRITICAL RULES:
+- Do NOT list, summarize, or reference the atomic elements.
+- Do NOT "cover all points" from the content.
+- Do NOT sound complete — sound human.
+- Pick what matters most and respond like a person talking, not writing.
+- It's okay to ignore most of the content.
+
+STYLE:
+- Short, conversational, slightly imperfect
+- Some opinions > full coverage
+- Natural flow > structured completeness
+
+IF UNSURE:
+- Say you're not sure, or ask a follow-up question.
+
+OUTPUT:
+- One natural response. No bullets. No lists. No structure.
+
 ${voiceSection}`
       : `You are the Targeted Decomposition Engine's reconstruction system. Take atomic intelligence units and REASSEMBLE them into a targeted deliverable.
 
