@@ -636,6 +636,7 @@ app.post('/build-cppv/:collectionId', auth, async (req, res) => {
       if (videoAudio.length === 0) reasons.push(`No video/audio sources found (${readySources.length} ready sources, but types are: ${[...new Set(readySources.map(s=>s.source_type))].join(', ') || 'none'})`);
       else if (videoAudio.length < 3) reasons.push(`Need 3+ video/audio sources (have ${videoAudio.length})`);
       if (segmentCount < 3 && videoAudio.length >= 3) reasons.push(`Only ${segmentCount} of ${videoAudio.length} video sources have enough atom text (need 3+)`);
+      if (!reasons.length && engine._lastCPPVError) reasons.push(engine._lastCPPVError);
       if (!reasons.length) reasons.push('Unknown — check Railway logs for CPPV lines');
 
       res.json({ ok: false, status: 'cppv_skipped', reasons,

@@ -576,7 +576,22 @@ ${voiceSection}`;
       return null;
     }
 
-    console.log(`\n  Building CPPV via TrueWriting API (${segments.length} video/audio sources)...`);
+    // Cap segments to avoid overwhelming TrueWriting with massive payloads.
+    // 20 diverse sources is more than enough to build an accurate voice profile.
+    const MAX_SEGMENTS = 20;
+    let selectedSegments = segments;
+    if (segments.length > MAX_SEGMENTS) {
+      // Take a spread: first 5, last 5, and 10 evenly spaced from the middle
+      const first = segments.slice(0, 5);
+      const last = segments.slice(-5);
+      const middle = segments.slice(5, -5);
+      const step = Math.max(1, Math.floor(middle.length / 10));
+      const sampled = middle.filter((_, i) => i % step === 0).slice(0, 10);
+      selectedSegments = [...first, ...sampled, ...last];
+      console.log(`  CPPV: capped from ${segments.length} to ${selectedSegments.length} segments (spread sample)`);
+    }
+
+    console.log(`\n  Building CPPV via TrueWriting API (${selectedSegments.length} video/audio sources)...`);
     try {
       const resp = await fetch(`${apiUrl}/analyze`, {
         method: 'POST',
@@ -584,11 +599,17 @@ ${voiceSection}`;
         body: JSON.stringify({
           source_type: 'transcript',
           profile_type: 'cppv', // hint to TrueWriting that this is spoken content
-          segments,
+          segments: selectedSegments,
           min_words: 50,
         }),
       });
-      if (!resp.ok) { console.log(`  CPPV: API error ${resp.status}`); return null; }
+      if (!resp.ok) {
+        const errBody = await resp.text().catch(() => 'no body');
+        console.log(`  CPPV: TrueWriting API error ${resp.status}: ${errBody.slice(0, 200)}`);
+        // Store the error so build-cppv endpoint can report it
+        this._lastCPPVError = `TrueWriting API returned ${resp.status}: ${errBody.slice(0, 200)}`;
+        return null;
+      }
       const profile = await resp.json();
 
       // Wrap with metadata so the stored record is self-describing for audit + recomposition
