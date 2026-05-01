@@ -555,8 +555,19 @@ ${voiceSection}`;
       return null;
     }
 
+    // Sample sources to avoid overwhelming memory on large collections.
+    // 50 sources spread across the timeline gives TrueWriting broad stylistic
+    // coverage without 138+ database queries crashing the server.
+    const MAX_SOURCES = 50;
+    let sampled = videoAudioSources;
+    if (videoAudioSources.length > MAX_SOURCES) {
+      const step = Math.floor(videoAudioSources.length / MAX_SOURCES);
+      sampled = videoAudioSources.filter((_, i) => i % step === 0).slice(0, MAX_SOURCES);
+      console.log(`  CPPV: sampled ${sampled.length} of ${videoAudioSources.length} video/audio sources (spread across timeline)`);
+    }
+
     const segments = [];
-    for (const source of videoAudioSources) {
+    for (const source of sampled) {
       const atoms = await this.store.getAtoms(collectionId, source.id);
       const fullText = atoms.map(a => a.text).join(' ');
       if (fullText.length > 20) {
