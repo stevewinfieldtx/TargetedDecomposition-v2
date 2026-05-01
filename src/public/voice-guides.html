@@ -411,7 +411,7 @@ async function doDownload() {
   const fmt = document.querySelector('input[name="fmt"]:checked').value;
   const btn = document.getElementById('dlBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Generating...';
+  btn.innerHTML = '<span class="spinner"></span> Generating voice guide (3-pass analysis, ~3-5 min)...';
 
   try {
     if (fmt === 'json') {
@@ -439,7 +439,7 @@ async function previewGuide(colId, colName) {
   render();
 
   try {
-    toast('Generating preview...', 'info');
+    toast('Generating preview (3-pass analysis, ~3-5 min)...', 'info');
     const data = await api(`/api/cppv/${colId}/voice-guide?name=${encodeURIComponent(colName)}&format=json`);
     previewData = data;
     render();

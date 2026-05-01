@@ -1,0 +1,21 @@
+{
+  "name": "tde-orchestrator",
+  "version": "1.0.0",
+  "description": "The Orchestrator — central control plane for the OppIntelAI platform",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.1",
+    "pg": "^8.13.1"
+  },
+  "keywords": ["oppintelai", "orchestrator", "tde"],
+  "license": "UNLICENSED",
+  "private": true
+}

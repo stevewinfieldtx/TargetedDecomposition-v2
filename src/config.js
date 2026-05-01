@@ -30,8 +30,9 @@ module.exports = {
   CEREBRAS_MODEL:    process.env.CEREBRAS_MODEL    || 'llama-3.3-70b',
 
   // Models
+  // OPENROUTER_MODEL_ID overrides CONTENT_MODEL when set (e.g. from OpenRouter dashboard)
   ANALYSIS_MODEL:  process.env.ANALYSIS_MODEL  || 'qwen/qwen-2.5-72b-instruct',
-  CONTENT_MODEL:   process.env.CONTENT_MODEL   || 'meta-llama/llama-3.1-70b-instruct',
+  CONTENT_MODEL:   process.env.OPENROUTER_MODEL_ID || process.env.CONTENT_MODEL || 'meta-llama/llama-3.1-70b-instruct',
   EMBEDDING_MODEL: process.env.EMBEDDING_MODEL || 'mistralai/mistral-embed-2312',
 
   // External services
