@@ -27,7 +27,7 @@ const Store   = require('./store');
 const { munge }     = require('./munger');
 const { tagAtoms }  = require('./tagger');
 const { runAnalysis } = require('./analyzers');
-const { batchEmbed, callLLM, callLLMFast, generateEmbedding } = require('../utils/llm');
+const { batchEmbed, callLLM, callLLMFast, callLLMJSON, generateEmbedding } = require('../utils/llm');
 const { v4: uuidv4 } = require('uuid');
 
 const youtube = require('../ingest/youtube');
@@ -94,6 +94,22 @@ class TDEngine {
       sourceRecord.metadata = { ...sourceRecord.metadata, atomCount: atoms.length };
       await this.store.addSource(collectionId, sourceRecord);
       console.log(`  Done: ${atoms.length} atoms stored for "${sourceRecord.title}"`);
+
+      // Auto-build CPPV every 5th video/audio source
+      const VIDEO_AUDIO_TYPES = new Set(['youtube', 'audio', 'podcast', 'mp3', 'mp4']);
+      if (VIDEO_AUDIO_TYPES.has(type.toLowerCase())) {
+        try {
+          const allSources = await this.store.getSources(collectionId);
+          const readyVideoCount = allSources.filter(s => s.status === 'ready' && VIDEO_AUDIO_TYPES.has(s.source_type)).length;
+          if (readyVideoCount >= 3 && readyVideoCount % 5 === 0) {
+            console.log(`  [auto-cppv] ${readyVideoCount} video/audio sources ready — triggering CPPV build`);
+            this._buildCPPV(collectionId)
+              .then(r => r ? console.log(`  [auto-cppv] CPPV built (${r.source_count} sources)`) : console.log('  [auto-cppv] CPPV skipped (see logs above)'))
+              .catch(e => console.error(`  [auto-cppv] CPPV failed: ${e.message}`));
+          }
+        } catch (e) { console.log(`  [auto-cppv] check failed: ${e.message}`); }
+      }
+
       return { ...sourceRecord, atomCount: atoms.length };
     } catch (err) {
       const retryCount = sourceRecord.metadata.retryCount || 0;

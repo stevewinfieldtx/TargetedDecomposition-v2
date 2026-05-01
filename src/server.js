@@ -166,6 +166,8 @@ app.get('/health', (req, res) => {
     status: 'ok', engine: 'TDE — Targeted Decomposition Engine', version: '2.2.0',
     hasOpenRouter: !!config.OPENROUTER_API_KEY, hasYouTubeAPI: !!config.YOUTUBE_API_KEY,
     hasGroq: !!config.GROQ_API_KEY,
+    hasTrueWriting: !!config.TRUEWRITING_API_URL,
+    trueWritingUrl: config.TRUEWRITING_API_URL ? config.TRUEWRITING_API_URL.replace(/\/\/.*@/, '//***@').slice(0, 60) : 'NOT SET',
     vectorStore: engine.store.qdrantReady ? 'qdrant' : 'sqlite',
     qdrantConnected: engine.store.qdrantReady,
     supportedTypes: ['youtube', 'pdf', 'docx', 'pptx', 'audio', 'text', 'web'],
@@ -599,6 +601,32 @@ app.post('/analyze/:collectionId', auth, async (req, res) => {
     const results = await engine.analyzeCollection(req.params.collectionId);
     res.json({ ok: true, results });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Build CPPV Only (lightweight — skips full per-source analysis) ───────────
+// Use this when you just want to (re)build the voice profile from existing atoms.
+// Much faster than /analyze which runs LLM analysis on every single source first.
+app.post('/build-cppv/:collectionId', auth, async (req, res) => {
+  try {
+    const col = await engine.getCollection(req.params.collectionId);
+    if (!col) return res.status(404).json({ error: 'Collection not found' });
+    console.log(`\n  [build-cppv] Manual CPPV build requested for ${req.params.collectionId}`);
+    const result = await engine._buildCPPV(req.params.collectionId);
+    if (result) {
+      res.json({ ok: true, status: 'cppv_built', sources_used: result.source_count });
+    } else {
+      // _buildCPPV returns null with a console.log explaining why
+      const sources = await engine.store.getSources(req.params.collectionId);
+      const videoAudio = sources.filter(s => s.status === 'ready' && ['youtube','audio','podcast','mp3','mp4'].includes(s.source_type));
+      const reasons = [];
+      if (!config.TRUEWRITING_API_URL) reasons.push('TRUEWRITING_API_URL not configured on Railway');
+      if (videoAudio.length < 3) reasons.push(`Need 3+ video/audio sources (have ${videoAudio.length})`);
+      res.json({ ok: false, status: 'cppv_skipped', reasons });
+    }
+  } catch (err) {
+    console.error(`  [build-cppv] Error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/analyze/:collectionId/:sourceId', auth, async (req, res) => {

@@ -485,18 +485,20 @@ async function buildProfile(colId) {
   building.add(colId);
   render(); // re-render to show spinner on button
 
-  toast('Building voice profile — this may take a few minutes for large collections...', 'info');
+  toast('Building voice profile...', 'info');
 
   try {
-    const result = await apiPost(`/analyze/${colId}`);
+    const result = await apiPost(`/build-cppv/${colId}`);
     building.delete(colId);
 
     if (result.ok) {
-      toast('Voice profile built successfully! Reloading...', 'success');
-      // Reload to pick up the new CPPV
+      toast(`Voice profile built from ${result.sources_used} sources!`, 'success');
       await loadCollections();
+    } else if (result.reasons) {
+      toast(`CPPV skipped: ${result.reasons.join('; ')}`, 'error');
+      render();
     } else {
-      toast(`Build completed but returned unexpected result`, 'error');
+      toast('Build completed but returned unexpected result', 'error');
       render();
     }
   } catch (err) {
