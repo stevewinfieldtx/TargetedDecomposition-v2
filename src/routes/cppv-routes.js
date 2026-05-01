@@ -91,9 +91,30 @@ module.exports = function mountCPPVRoutes(app, auth, engine) {
       const col = await engine.getCollection(collectionId);
       const displayName = name || col?.name || collectionId;
 
-      // 3. Generate voice guide (lazy require so routes mount even if docx pkg missing)
-      const { generateVoiceGuide } = require('../utils/voice-guide-renderer');
-      const guide = await generateVoiceGuide(intel.data, displayName, engine, collectionId);
+      // 3. Check for cached voice guide first (stored after first generation)
+      const cachedGuide = await engine.store.getIntelligence(collectionId, 'voice_guide_sections');
+      let guide;
+
+      if (cachedGuide && cachedGuide.data && !req.query.rebuild) {
+        // Use cached sections — just rebuild the docx from them
+        console.log(`  Voice guide: using cached sections for ${collectionId}`);
+        const { generateVoiceGuideFromCache } = require('../utils/voice-guide-renderer');
+        guide = await generateVoiceGuideFromCache(cachedGuide.data, displayName, intel.data);
+      } else {
+        // Generate fresh (3-pass) and cache the result
+        console.log(`  Voice guide: generating fresh 3-pass for ${collectionId}...`);
+        const { generateVoiceGuide } = require('../utils/voice-guide-renderer');
+        guide = await generateVoiceGuide(intel.data, displayName, engine, collectionId);
+
+        // Cache the sections so we never regenerate unless ?rebuild=true
+        await engine.store.storeIntelligence(collectionId, 'voice_guide_sections', {
+          sections: guide.sections,
+          displayName,
+          generated_at: guide.generated_at,
+          source_count: intel.data.source_count || null,
+        });
+        console.log(`  Voice guide: cached for ${collectionId}`);
+      }
 
       // 4. Return as JSON or .docx
       if (format === 'json') {

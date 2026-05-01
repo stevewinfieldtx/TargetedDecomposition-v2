@@ -604,4 +604,19 @@ async function _buildDocx(sections, displayName, profileType, intelData) {
   return await Packer.toBuffer(doc);
 }
 
-module.exports = { generateVoiceGuide, SECTION_DEFS };
+module.exports = { generateVoiceGuide, generateVoiceGuideFromCache, SECTION_DEFS };
+
+/**
+ * Rebuild a voice guide from cached sections (no LLM calls).
+ * Used when the 3-pass has already run and sections are stored in the intelligence table.
+ */
+async function generateVoiceGuideFromCache(cachedData, displayName, intelData) {
+  const profileType = intelData.profile_type || 'CPPV';
+  const sections = cachedData.sections || [];
+  const docxBuffer = await _buildDocx(sections, displayName, profileType, intelData);
+  return {
+    sections,
+    docxBuffer,
+    generated_at: cachedData.generated_at || new Date().toISOString(),
+  };
+}
