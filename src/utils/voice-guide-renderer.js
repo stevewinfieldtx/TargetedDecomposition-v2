@@ -92,8 +92,17 @@ CRITICAL RULES:
 - Each section should have 4–8 detailed rules with examples.
 - Quality and specificity matter more than anything. Take your time.
 
+QUANTITATIVE FINGERPRINT INTEGRATION (this is what makes this analysis unique):
+The statistical fingerprint contains precise measurements that most voice analyses lack. You MUST weave these numbers into your rules as quantitative evidence:
+- VOCABULARY section: Cite the exact vocabulary diversity score, top repeated words with their frequency counts, and the computed readability grade level. Example rule format: "Relies heavily on the word 'like' (847 occurrences across the corpus) and 'actually' (312 occurrences) as verbal fillers. Example: 'I actually like going to this place because it's like really authentic.'"
+- PUNCTUATION section: Cite exact punctuation ratios (commas per sentence, dash frequency, exclamation rate) as calibration targets an AI agent can follow.
+- SENTENCE STRUCTURE section: Cite the exact average sentence length, percentage of short sentences (<10 words) vs long sentences (>30 words), and the standard deviation if available.
+- TONE/QUIRKS sections: Cite catchphrases and signature expressions WITH their frequency counts from the phrase fingerprint. "Says 'you guys' 47 times across 20 videos" is the kind of specificity that makes a voice guide usable vs generic.
+- Where the fingerprint provides a number, ALWAYS include it. A rule without quantitative backing when the data exists is a missed opportunity.
+- Present fingerprint metrics naturally within rules, not as a separate data dump. The numbers are EVIDENCE supporting the pattern you identified in the source text.
+
 Return valid JSON: an array of objects, each with:
-  { "num": <section number>, "title": "<section title>", "rules": ["<detailed rule with quoted example>", ...] }`;
+  { "num": <section number>, "title": "<section title>", "rules": ["<detailed rule with quoted example and quantitative evidence>", ...] }`;
 
   // ── Pass 1: Micro-level (Sections 1–3) ──────────────────────────────────────
   const pass1Prompt = `Person: ${displayName}
