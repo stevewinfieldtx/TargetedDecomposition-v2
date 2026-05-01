@@ -248,7 +248,7 @@ app.patch('/collections/:id/resource-type', auth, async (req, res) => {
 // ── Intel Cache (Company + Industry Knowledge Persistence) ──────────────
 // Mounts /intel/company, /intel/industry, /intel/stats endpoints
 // Tables auto-created on startup. TTL configurable via INTEL_TTL_DAYS env var.
-(async () => {
+const _routesReady = (async () => {
   if (engine.store._pgInitPromise) await engine.store._pgInitPromise;
   if (engine.store.pg && engine.store.pgReady) {
     require('./routes/intel-cache-routes')(app, auth, engine.store.pg);
@@ -852,19 +852,27 @@ app.get('/cpp-v', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'voice-guides.html'));
 });
 
-app.use((req, res) => { res.status(404).json({ error: 'Not found', hint: 'See /health for available endpoints' }); });
+// Wait for async routes (CPPV, CPPW, Intel, Research) to mount
+// BEFORE registering the catch-all 404 and starting the server.
+// Without this, the catch-all registers first and blocks the async routes.
+_routesReady.then(() => {
+  app.use((req, res) => { res.status(404).json({ error: 'Not found', hint: 'See /health for available endpoints' }); });
 
-app.listen(config.PORT, '0.0.0.0', () => {
-  console.log(`\n${'═'.repeat(60)}`);
-  console.log(`  TDE — Targeted Decomposition Engine v2.2.0`);
-  console.log(`  Port:        ${config.PORT}`);
-  console.log(`  OpenRouter:  ${config.OPENROUTER_API_KEY ? 'YES' : 'NO'}`);
-  console.log(`  YouTube API: ${config.YOUTUBE_API_KEY ? 'YES' : 'NO'}`);
-  console.log(`  Groq:        ${config.GROQ_API_KEY ? 'YES' : 'NO'}`);
-  console.log(`  Templates:   ${Object.keys(config.TEMPLATES).join(', ')}`);
-  console.log(`  Auth:        ${config.API_SECRET_KEY ? 'MASTER KEY SET' : 'OPEN until first API key is created'}`);
-  console.log(`  Admin UI:    http://localhost:${config.PORT}/admin`);
-  console.log(`${'═'.repeat(60)}\n`);
+  app.listen(config.PORT, '0.0.0.0', () => {
+    console.log(`\n${'═'.repeat(60)}`);
+    console.log(`  TDE — Targeted Decomposition Engine v2.2.0`);
+    console.log(`  Port:        ${config.PORT}`);
+    console.log(`  OpenRouter:  ${config.OPENROUTER_API_KEY ? 'YES' : 'NO'}`);
+    console.log(`  YouTube API: ${config.YOUTUBE_API_KEY ? 'YES' : 'NO'}`);
+    console.log(`  Groq:        ${config.GROQ_API_KEY ? 'YES' : 'NO'}`);
+    console.log(`  Templates:   ${Object.keys(config.TEMPLATES).join(', ')}`);
+    console.log(`  Auth:        ${config.API_SECRET_KEY ? 'MASTER KEY SET' : 'OPEN until first API key is created'}`);
+    console.log(`  Admin UI:    http://localhost:${config.PORT}/admin`);
+    console.log(`${'═'.repeat(60)}\n`);
+  });
+}).catch(err => {
+  console.error('  FATAL: Route initialization failed:', err.message);
+  process.exit(1);
 });
 
 module.exports = app;
