@@ -541,7 +541,7 @@ ${voiceSection}`;
   // POST /api/cppw/:collectionId.
 
   async _buildCPPV(collectionId) {
-    const apiUrl = config.TRUEWRITING_API_URL;
+    const apiUrl = (config.TRUEWRITING_API_URL || '').replace(/\/+$/, '');
     if (!apiUrl) { console.log(`  CPPV: TRUEWRITING_API_URL not configured — skipping`); return null; }
 
     const VIDEO_AUDIO_TYPES = new Set(['youtube', 'audio', 'podcast', 'mp3', 'mp4']);
@@ -576,20 +576,18 @@ ${voiceSection}`;
       return null;
     }
 
-    // Cap segments to avoid overwhelming TrueWriting with massive payloads.
-    // 20 diverse sources is more than enough to build an accurate voice profile.
-    const MAX_SEGMENTS = 20;
-    let selectedSegments = segments;
-    if (segments.length > MAX_SEGMENTS) {
-      // Take a spread: first 5, last 5, and 10 evenly spaced from the middle
-      const first = segments.slice(0, 5);
-      const last = segments.slice(-5);
-      const middle = segments.slice(5, -5);
-      const step = Math.max(1, Math.floor(middle.length / 10));
-      const sampled = middle.filter((_, i) => i % step === 0).slice(0, 10);
-      selectedSegments = [...first, ...sampled, ...last];
-      console.log(`  CPPV: capped from ${segments.length} to ${selectedSegments.length} segments (spread sample)`);
-    }
+    // Send ALL segments for full stylistic breadth, but cap each segment's text
+    // to ~2000 words so the total payload stays manageable. TrueWriting sees the
+    // full range of topics/contexts (travel vlog vs restaurant review vs interview)
+    // which matters more for voice fingerprinting than having every word from fewer videos.
+    const MAX_WORDS_PER_SEGMENT = 2000;
+    const selectedSegments = segments.map(seg => {
+      const words = seg.text.split(/\s+/);
+      if (words.length <= MAX_WORDS_PER_SEGMENT) return seg;
+      return { ...seg, text: words.slice(0, MAX_WORDS_PER_SEGMENT).join(' ') };
+    });
+    const totalWords = selectedSegments.reduce((s, seg) => s + seg.text.split(/\s+/).length, 0);
+    console.log(`  CPPV: ${selectedSegments.length} segments, ~${totalWords} words total (capped at ${MAX_WORDS_PER_SEGMENT}/segment)`);
 
     console.log(`\n  Building CPPV via TrueWriting API (${selectedSegments.length} video/audio sources)...`);
     try {
