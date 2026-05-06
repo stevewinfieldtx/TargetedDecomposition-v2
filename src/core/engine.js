@@ -31,6 +31,7 @@ const { batchEmbed, callLLM, callLLMFast, callLLMJSON, generateEmbedding } = req
 const { v4: uuidv4 } = require('uuid');
 
 const youtube = require('../ingest/youtube');
+const { pushTranscriptToMandM } = require('../ingest/mandm-bridge');
 
 const MAX_AUTO_RETRIES = 2;
 const AUTO_RETRY_DELAYS = [10000, 30000]; // 10s first, 30s second
@@ -209,6 +210,10 @@ class TDEngine {
       await this.store.addSource(collectionId, source);
       return null;
     }
+
+    // Best-effort push to M&M (no-op if MANDM_INGEST_URL/TOKEN not set)
+    pushTranscriptToMandM({ videoId, title: source.title, transcript })
+      .catch((err) => console.error(`  M&M bridge unhandled: ${err.message}`));
 
     const content = { text: transcript.text, segments: transcript.segments, title: source.title, author: source.author, duration: source.duration, metadata: source.metadata, sourceUrl: videoUrl };
     const atoms = await this._pipeline(collectionId, videoId, content, `YouTube video: "${source.title}" by ${source.author}`);
