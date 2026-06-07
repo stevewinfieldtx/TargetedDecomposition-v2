@@ -177,26 +177,41 @@
     $("rSummary").textContent = p.summary || "";
 
     let html = "";
-    html += listSec("Target industries", p.target_industries, (x) => esc(x));
-    if (p.company_size) {
-      const cs = p.company_size;
-      const parts = [];
-      if (cs.employees) parts.push("<span class='kv'>Employees:</span> " + esc(cs.employees));
-      if (cs.revenue) parts.push("<span class='kv'>Revenue:</span> " + esc(cs.revenue));
-      if (parts.length) html += '<div class="sec"><h3>Company size</h3><ul><li>' + parts.join("</li><li>") + "</li></ul></div>";
+
+    // Discriminators — the core: web-findable variables that split fit from non-fit
+    if (Array.isArray(p.discriminators) && p.discriminators.length) {
+      const cards = [...p.discriminators]
+        .sort((a, b) => (b.weight || 0) - (a.weight || 0))
+        .map((d) => {
+          const det = d.detection || {};
+          return '<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0;background:var(--panel2)">' +
+            '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">' +
+              '<strong style="color:var(--text);font-size:15px">' + esc(d.variable || "") + '</strong>' +
+              (d.weight ? '<span style="color:var(--muted);font-size:12px;white-space:nowrap">weight ' + esc(d.weight) + '</span>' : '') +
+            '</div>' +
+            (d.why_discriminating ? '<div style="color:var(--muted);font-size:13.5px;margin-top:4px">' + esc(d.why_discriminating) + '</div>' : '') +
+            (det.method || det.example_query
+              ? '<div style="margin-top:7px;font-size:13px"><span class="pill">' + esc(det.method || "find") + '</span> <span style="color:var(--muted)">' + esc(det.example_query || "") + '</span></div>'
+              : '') +
+          '</div>';
+        }).join("");
+      html += '<div class="sec" style="grid-column:1/-1"><h3>Discriminators — how to find these customers</h3>' + cards + '</div>';
     }
-    html += listSec("Geographies", p.geographies, (x) => esc(x));
+
+    if (p._low_evidence) {
+      html += '<div class="sec" style="grid-column:1/-1"><h3>Heads up</h3><p>Evidence was thin, so discriminators may be limited. Point it at the exact website (one with a customers / case-studies page) and regenerate.</p></div>';
+    }
+
+    html += listSec("Anti-signals (NOT a fit)", p.anti_signals, (x) =>
+      typeof x === "object"
+        ? "<strong>" + esc(x.variable || "") + "</strong>" + (x.detection && x.detection.example_query ? " — " + esc(x.detection.example_query) : "")
+        : esc(x));
     html += listSec("Buyer personas", p.buyer_personas, (x) =>
       typeof x === "object" ? "<strong>" + esc(x.title) + "</strong>" + (x.role ? " — " + esc(x.role) : "") : esc(x));
+
+    // legacy/convenience fields (rendered only if an older profile still has them)
+    html += listSec("Target industries", p.target_industries, (x) => esc(x));
     html += listSec("Key pain points", p.key_pain_points, (x) => esc(x));
-    html += listSec("Buying triggers", p.buying_triggers, (x) => esc(x));
-    html += listSec("Signals to look for", p.signals_to_look_for, (x) => esc(x));
-    html += listSec("Disqualifiers", p.disqualifiers, (x) => esc(x));
-    if (p.example_fit_companies && p.example_fit_companies.length) {
-      html += '<div class="sec"><h3>Example fit companies</h3><div>' +
-        p.example_fit_companies.map((c) => '<span class="pill">' + esc(typeof c === "object" ? c.name || JSON.stringify(c) : c) + "</span>").join("") +
-        "</div></div>";
-    }
     $("rGrid").innerHTML = html || '<div class="sec"><h3>Note</h3><p>No structured fields were returned. Try adding the website for better results.</p></div>';
     show($("results"), true);
   }

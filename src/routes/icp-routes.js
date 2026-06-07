@@ -241,15 +241,21 @@ module.exports = (app, auth, pg, engine) => {
     return String(name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '') + '.com';
   }
 
-  async function buildIcpProfile(collectionId) {
-    const res = await engine.reconstruct([collectionId], {
-      intent: 'icp_profile', query: ICP_QUERY, format: 'json', max_atoms: 25, max_words: 900,
-    });
-    let profile = res && res.output;
-    if (typeof profile === 'string') { const m = profile.match(/\{[\s\S]*\}/); profile = m ? safeParse(m[0]) : { summary: profile }; }
-    if (!profile || typeof profile !== 'object') profile = {};
-    profile._confidence = res ? res.confidence : null;
-    return profile;
+  async function buildIcpProfile(collectionId, vendor) {
+    // Vendor-agnostic discriminator generator (sharp, web-findable variables)
+    const icpGen = require('../core/fitscore/icp_generator');
+    return icpGen.generate(engine, collectionId, vendor || {});
+  }
+
+  // Pull high-value pages that reveal who a vendor actually sells to.
+  async function ingestEvidencePages(collectionId, baseUrl, label) {
+    const base = baseUrl.replace(/\/+$/, '');
+    const paths = ['customers', 'case-studies', 'case-study', 'success-stories',
+      'integrations', 'partners', 'clients'];
+    for (const p of paths) {
+      try { await engine.ingest(collectionId, 'web', base + '/' + p, { title: label + ' — ' + p }); }
+      catch { /* page may not exist; skip */ }
+    }
   }
 
   // ── PUBLIC: generate-or-fetch an ICP for a vendor/solution (powers the Drix page) ──
@@ -288,12 +294,14 @@ module.exports = (app, auth, pg, engine) => {
         const msipText = msipToText(swarm.msip, researchUrl);
         if (msipText.length > 100) await engine.ingest(collectionId, 'text', msipText, { title: (name || domain) + ' — MSIP' });
         if (webContent.length > 200) await engine.ingest(collectionId, 'web', researchUrl, { title: (name || domain) + ' — Website' }).catch(() => {});
+        // evidence pages reveal who they actually sell to -> sharper discriminators
+        await ingestEvidencePages(collectionId, researchUrl, name || domain);
         await new Promise((r) => setTimeout(r, 2500));
         runDeepFill(engine, collectionId, researchUrl, name, swarm.msip).catch(() => {}); // background enrichment
       }
 
       // 3) synthesize ICP + cache it in TDE
-      const profile = await buildIcpProfile(collectionId);
+      const profile = await buildIcpProfile(collectionId, { name: name || domain, domain });
       const record = {
         vendor: { name: name || domain, domain, url: researchUrl, type: type || 'vendor' },
         profile, generated_at: new Date().toISOString(), ttl_days: ICP_TTL_DAYS,
