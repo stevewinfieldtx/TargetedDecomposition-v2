@@ -294,8 +294,9 @@ module.exports = (app, auth, pg, engine) => {
         const msipText = msipToText(swarm.msip, researchUrl);
         if (msipText.length > 100) await engine.ingest(collectionId, 'text', msipText, { title: (name || domain) + ' — MSIP' });
         if (webContent.length > 200) await engine.ingest(collectionId, 'web', researchUrl, { title: (name || domain) + ' — Website' }).catch(() => {});
-        // evidence pages reveal who they actually sell to -> sharper discriminators
-        await ingestEvidencePages(collectionId, researchUrl, name || domain);
+        // evidence pages reveal who they actually sell to -> sharper discriminators.
+        // Run in the BACKGROUND so it never blocks synthesis (enriches next refresh).
+        ingestEvidencePages(collectionId, researchUrl, name || domain).catch(() => {});
         await new Promise((r) => setTimeout(r, 2500));
         runDeepFill(engine, collectionId, researchUrl, name, swarm.msip).catch(() => {}); // background enrichment
       }
