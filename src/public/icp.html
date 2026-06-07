@@ -142,14 +142,35 @@
         body: JSON.stringify({ name, url, type: selectedType, force: !!force }),
       });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || "Request failed");
-      render(data);
+      if (!resp.ok && !data.status) throw new Error(data.error || "Request failed");
+
+      if (data.status === "ready" || data.profile) { render(data); return; }
+      if (data.status === "generating") { await pollUntilReady(data.domain, name || url); return; }
+      if (data.status === "error") { showErr("Generation failed: " + (data.error || "unknown")); return; }
+      throw new Error(data.error || "Unexpected response");
     } catch (e) {
       showErr(e.message || "Something went wrong.");
     } finally {
       show($("status"), false);
       $("go").disabled = false;
     }
+  }
+
+  async function pollUntilReady(domain, label) {
+    $("statusText").textContent = "Researching " + (label || domain) + " and building discriminators… this can take a minute or two.";
+    const deadline = Date.now() + 4 * 60 * 1000; // up to 4 minutes
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5000));
+      let data;
+      try {
+        const resp = await fetch(API_BASE + "/icp/profile/" + encodeURIComponent(domain));
+        data = await resp.json();
+      } catch { continue; }
+      if (data.status === "ready" || data.profile) { render(data); return; }
+      if (data.status === "error") { showErr("Generation failed: " + (data.error || "unknown")); return; }
+      // 202 generating / 404 none -> keep waiting
+    }
+    showErr("Still generating after a couple of minutes — it keeps working in the background. Try the lookup again shortly.");
   }
 
   function showErr(msg) { const e = $("err"); e.textContent = msg; show(e, true); }

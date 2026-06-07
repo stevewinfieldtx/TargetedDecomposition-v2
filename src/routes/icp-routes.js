@@ -258,33 +258,20 @@ module.exports = (app, auth, pg, engine) => {
     }
   }
 
-  // ── PUBLIC: generate-or-fetch an ICP for a vendor/solution (powers the Drix page) ──
-  // body: { name?, url?, type? ("vendor"|"solution"), force? }
-  app.post('/icp/profile', async (req, res) => {
+  async function setIcpStatus(collectionId, status, error) {
+    const col = await engine.getCollection(collectionId);
+    if (!col) return;
+    const m = meta(col);
+    m.icp_status = status;
+    m.icp_status_at = new Date().toISOString();
+    if (error) m.icp_error = error; else if (status !== 'error') delete m.icp_error;
+    await saveCollectionMeta(collectionId, m);
+  }
+
+  // Background worker: research -> synthesize discriminators -> save + mark ready.
+  async function runGeneration(collectionId, opts) {
+    const { name, domain, type, researchUrl, force } = opts;
     try {
-      const { name, url, type, force } = req.body || {};
-      if (!name && !url) return res.status(400).json({ error: 'Provide a vendor/solution name or website URL' });
-
-      const domain = await resolveDomain(name, url);
-      const collectionId = 'icp_' + domain.replace(/[^a-z0-9]+/gi, '_').toLowerCase();
-
-      // 1) cache check (stored in TDE on the collection)
-      const existing = await engine.getCollection(collectionId);
-      if (existing && !force) {
-        const m = meta(existing);
-        if (m.icp_profile && isFresh(m.icp_profile.generated_at, ICP_TTL_DAYS)) {
-          return res.json({ cached: true, ...m.icp_profile });
-        }
-      }
-
-      const researchUrl = url || ('https://' + domain);
-
-      // 2) ensure collection + research (swarm) on first time / stale
-      const collection = existing || await engine.createCollection(
-        collectionId, name || domain, 'ICP research',
-        { template: { id: 'business' }, templateId: 'business',
-          resource_type: type === 'solution' ? 'Solution' : 'Vendor', solutionUrl: researchUrl });
-
       let stats = { atomCount: 0 };
       try { stats = await engine.getStats(collectionId); } catch { /* none yet */ }
       if ((stats.atomCount || 0) < 20 || force) {
@@ -294,34 +281,71 @@ module.exports = (app, auth, pg, engine) => {
         const msipText = msipToText(swarm.msip, researchUrl);
         if (msipText.length > 100) await engine.ingest(collectionId, 'text', msipText, { title: (name || domain) + ' — MSIP' });
         if (webContent.length > 200) await engine.ingest(collectionId, 'web', researchUrl, { title: (name || domain) + ' — Website' }).catch(() => {});
-        // evidence pages reveal who they actually sell to -> sharper discriminators.
-        // Run in the BACKGROUND so it never blocks synthesis (enriches next refresh).
         ingestEvidencePages(collectionId, researchUrl, name || domain).catch(() => {});
         await new Promise((r) => setTimeout(r, 2500));
-        runDeepFill(engine, collectionId, researchUrl, name, swarm.msip).catch(() => {}); // background enrichment
+        runDeepFill(engine, collectionId, researchUrl, name, swarm.msip).catch(() => {});
       }
-
-      // 3) synthesize ICP + cache it in TDE
       const profile = await buildIcpProfile(collectionId, { name: name || domain, domain });
       const record = {
         vendor: { name: name || domain, domain, url: researchUrl, type: type || 'vendor' },
         profile, generated_at: new Date().toISOString(), ttl_days: ICP_TTL_DAYS,
       };
-      const m2 = meta(collection); m2.icp_profile = record;
-      await saveCollectionMeta(collectionId, m2);
+      const col = await engine.getCollection(collectionId);
+      const m = meta(col); m.icp_profile = record; m.icp_status = 'ready'; m.icp_status_at = new Date().toISOString(); delete m.icp_error;
+      await saveCollectionMeta(collectionId, m);
+      const n = profile && profile.discriminators ? profile.discriminators.length : 0;
+      console.log('  [ICP] ready: ' + collectionId + ' (' + n + ' discriminators)');
+    } catch (e) {
+      await setIcpStatus(collectionId, 'error', e.message).catch(() => {});
+      console.log('  [ICP] error ' + collectionId + ': ' + e.message);
+    }
+  }
 
-      res.json({ cached: false, ...record });
+  // ── PUBLIC: kick off (or return) an ICP. Returns immediately; poll GET for the result. ──
+  // body: { name?, url?, type? ("vendor"|"solution"), force? }
+  app.post('/icp/profile', async (req, res) => {
+    try {
+      const { name, url, type, force } = req.body || {};
+      if (!name && !url) return res.status(400).json({ error: 'Provide a vendor/solution name or website URL' });
+
+      const domain = await resolveDomain(name, url);
+      const collectionId = 'icp_' + domain.replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+      const researchUrl = url || ('https://' + domain);
+
+      const existing = await engine.getCollection(collectionId);
+      if (existing && !force) {
+        const m = meta(existing);
+        if (m.icp_profile && isFresh(m.icp_profile.generated_at, ICP_TTL_DAYS)) {
+          return res.json({ status: 'ready', cached: true, ...m.icp_profile });
+        }
+        if (m.icp_status === 'generating' && isFresh(m.icp_status_at, 0.02)) { // ~30 min guard
+          return res.json({ status: 'generating', domain, collectionId });
+        }
+      }
+
+      if (!existing) {
+        await engine.createCollection(collectionId, name || domain, 'ICP research',
+          { template: { id: 'business' }, templateId: 'business',
+            resource_type: type === 'solution' ? 'Solution' : 'Vendor', solutionUrl: researchUrl });
+      }
+      await setIcpStatus(collectionId, 'generating');
+      runGeneration(collectionId, { name, domain, type, researchUrl, force }).catch(() => {}); // fire-and-forget
+      res.json({ status: 'generating', domain, collectionId });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  // ── PUBLIC: fetch a cached ICP if one exists ──
+  // ── PUBLIC: poll for an ICP. ready -> 200 with profile; generating -> 202; none -> 404 ──
   app.get('/icp/profile/:domain', async (req, res) => {
     try {
       const domain = bareDomain(req.params.domain);
       const col = await engine.getCollection('icp_' + domain.replace(/[^a-z0-9]+/gi, '_').toLowerCase());
       const m = col ? meta(col) : {};
-      if (!m.icp_profile) return res.status(404).json({ error: 'No ICP cached for ' + domain });
-      res.json({ cached: true, fresh: isFresh(m.icp_profile.generated_at, ICP_TTL_DAYS), ...m.icp_profile });
+      if (m.icp_profile) {
+        return res.json({ status: 'ready', cached: true, fresh: isFresh(m.icp_profile.generated_at, ICP_TTL_DAYS), ...m.icp_profile });
+      }
+      if (m.icp_status === 'generating') return res.status(202).json({ status: 'generating', domain });
+      if (m.icp_status === 'error') return res.json({ status: 'error', error: m.icp_error, domain });
+      return res.status(404).json({ status: 'none', error: 'No ICP for ' + domain });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
