@@ -46,23 +46,32 @@ RULES (follow strictly):
 - Aim for 8-15 sharp discriminators. A few sharp ones beat many bland ones. If evidence is thin, return fewer rather than padding with generic items.`;
 }
 
+function pickModel() {
+  return process.env.ICP_MODEL || process.env.ANALYSIS_MODEL || process.env.CONTENT_MODEL
+    || process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-70b-instruct';
+}
+
 async function callModel(system, user) {
-  if (!process.env.OPENROUTER_API_KEY) return null;
-  const model = process.env.ICP_MODEL || process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet';
+  if (!process.env.OPENROUTER_API_KEY) return { error: 'no OPENROUTER_API_KEY' };
+  const model = pickModel();
   try {
     const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + process.env.OPENROUTER_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model, temperature: 0.3, response_format: { type: 'json_object' },
+        model, temperature: 0.3,
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       }),
       signal: AbortSignal.timeout(90000),
     });
-    if (!r.ok) return null;
-    const txt = (await r.json()).choices?.[0]?.message?.content || '';
-    try { return JSON.parse(txt); } catch { const m = txt.match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; }
-  } catch { return null; }
+    if (!r.ok) { const t = await r.text().catch(() => ''); return { error: 'HTTP ' + r.status + ' ' + t.slice(0, 180), model }; }
+    const txt = ((await r.json()).choices?.[0]?.message?.content) || '';
+    let parsed = null;
+    try { parsed = JSON.parse(txt); } catch { const m = txt.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch { /* noop */ } } }
+    if (!parsed) return { error: 'unparseable_response', model, sample: txt.slice(0, 180) };
+    parsed._model = model;
+    return parsed;
+  } catch (e) { return { error: String((e && e.message) || e), model }; }
 }
 
 async function generate(engine, collectionId, vendor = {}) {
@@ -85,13 +94,16 @@ async function generate(engine, collectionId, vendor = {}) {
 
   if (!profile || !Array.isArray(profile.discriminators)) {
     return {
-      summary: 'Insufficient evidence to build sharp discriminators — research returned little. '
-        + 'Deepen research (case studies / customers / integrations) and regenerate.',
+      summary: (profile && profile.error)
+        ? 'Discriminator synthesis failed — see _error.'
+        : 'Synthesis returned no discriminators.',
       discriminators: [], buyer_personas: (profile && profile.buyer_personas) || [],
-      _low_evidence: true, _evidence_chars: evidence.length,
+      _low_evidence: evidence.length < 400, _evidence_chars: evidence.length,
+      _error: (profile && profile.error) || 'no_discriminators',
+      _model_tried: (profile && profile.model) || pickModel(),
+      _sample: (profile && profile.sample) || null,
     };
   }
-  profile._model = process.env.ICP_MODEL || process.env.OPENROUTER_MODEL || 'default';
   profile._evidence_chars = evidence.length;
   if (evidence.length < 400) profile._low_evidence = true;
   return profile;
