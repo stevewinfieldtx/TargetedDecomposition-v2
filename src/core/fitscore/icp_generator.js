@@ -59,7 +59,7 @@ async function callModel(system, user) {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + process.env.OPENROUTER_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model, temperature: 0.3,
+        model, temperature: 0.3, max_tokens: 3000,
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       }),
       signal: AbortSignal.timeout(90000),
