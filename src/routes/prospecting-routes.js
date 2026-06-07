@@ -60,6 +60,35 @@ module.exports = (app, auth, pg, engine) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Diagnostics: see the generated queries + which search engine works + sample hits
+  app.post('/icp/prospect/debug', auth, async (req, res) => {
+    try {
+      const { domain, url, icpId } = req.body || {};
+      const id = icpId || icpIdFor(domain || url || '');
+      const { getIcp } = require('../core/prospecting/engine');
+      const { generateQueries } = require('../core/prospecting/discover');
+      const { webSearchDebug } = require('../core/prospecting/search');
+      const icp = await getIcp(engine, id);
+      if (!icp) return res.status(404).json({ error: 'No ICP for ' + id + ' — generate it first.' });
+      const queries = await generateQueries(icp, 6);
+      const sample = queries[0] || ((icp.profile && icp.profile.target_industries && icp.profile.target_industries[0]) || 'companies');
+      const sr = await webSearchDebug(sample, 8);
+      res.json({
+        icpId: id,
+        openrouter_key: !!process.env.OPENROUTER_API_KEY,
+        prospect_model: process.env.PROSPECT_MODEL || 'meta-llama/llama-3.1-8b-instruct',
+        brave_key: !!process.env.BRAVE_API_KEY,
+        serper_key: !!process.env.SERPER_API_KEY,
+        query_count: queries.length,
+        queries,
+        sample_query: sample,
+        search_engine: sr.engine,
+        result_count: sr.count,
+        sample_urls: sr.results.slice(0, 5).map((x) => x.url),
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // Start the background loop (no-op unless PROSPECTING_ENABLED=true)
   startLoop(pg, engine);
 };
