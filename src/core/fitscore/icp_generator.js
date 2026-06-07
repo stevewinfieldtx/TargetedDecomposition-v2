@@ -19,31 +19,41 @@ const EVIDENCE_QUERY =
   'proof points. Prefer named specifics over marketing language.';
 
 function discriminatorPrompt(vendorName) {
-  return `You are building an Ideal Customer Profile for "${vendorName}" that MUST be usable to FIND customers on the web.
+  return `You are building an Ideal Customer Profile for "${vendorName}" that MUST be usable to FIND brand-new customers on the open web.
 
 Return JSON:
 {
   "summary": "1-2 sentences naming who specifically buys this and why — no generic category language",
   "discriminators": [
     {
-      "variable": "short canonical name, e.g. 'Runs Splunk SIEM'",
+      "variable": "short canonical OBSERVABLE trait, e.g. 'Runs Splunk SIEM' or 'Hiring OT security staff'",
       "definition": "what this trait means / how to read it",
       "why_discriminating": "why this separates a real buyer from a generic company in this category",
-      "detection": { "method": "one of: ${DETECT_METHODS}", "example_query": "a concrete web search or public signal you'd use to find it" },
+      "detection": { "method": "one of: ${DETECT_METHODS}", "example_query": "a DISCOVERY query that surfaces companies you do NOT already know" },
       "weight": 1
     }
   ],
-  "anti_signals": [ { "variable": "trait that means NOT a fit", "detection": { "method": "...", "example_query": "..." } } ],
+  "anti_signals": [ { "variable": "observable trait that means NOT a fit", "detection": { "method": "...", "example_query": "..." } } ],
   "buyer_personas": [ { "title": "...", "role": "..." } ]
 }
 
 RULES (follow strictly):
 - Derive discriminators ONLY from the supplied evidence about who this vendor actually sells to (named customers, case studies, integrations, verticals). Do NOT invent traits the evidence doesn't support.
-- EVERY discriminator must have a detection method + concrete example_query. If you can't say how to find it on the web, DROP it.
-- Do NOT restate the product's own features as customer "needs" (e.g. if the vendor sells SIEM integration, the discriminator is "already runs a SIEM" — an observable customer trait — not "needs SIEM integration").
-- SELF-CRITIQUE before answering: for each discriminator ask "would this equally describe a generic competitor's customer in the same category?" If yes, DELETE it and replace with something sharper grounded in THIS vendor's specific evidence.
+- Each discriminator must be an OBSERVABLE TRAIT of the customer that an outsider can detect. BANNED: restating ${vendorName}'s own features as a customer "need" — never "needs X", "requires X", or "wants X" where X is what ${vendorName} sells. Convert it into a findable proxy instead: a regulatory cohort, a hiring signal, a technology in use, a recent event, or an industry/segment. (Example: not "needs audit readiness" -> instead "operates under NERC CIP / TSA / PCI" or "hiring GRC/compliance analysts".)
+- detection.example_query MUST be a DISCOVERY query that finds companies you do NOT yet know. It must NOT contain the words "company name" and must NOT assume you already know the company. BANNED pattern: "company name + <keyword>".
+  Good discovery queries by method:
+    web_search: list of NERC CIP regulated utilities ; mid-size healthcare systems in Texas
+    job_postings: site:boards.greenhouse.io "OT security" ; "hiring" "GRC analyst" manufacturer
+    tech_stack: site:builtwith.com "Microsoft 365" healthcare  (directories of users)
+    news: "data breach" hospital 2025 ; "ransomware" manufacturer
+    firmographic: "Series B" cybersecurity startups ; NAICS 2211 utilities
+    review_sites: site:g2.com <competitor> reviews
+- SELF-CRITIQUE before answering — for each discriminator check BOTH:
+    (a) "would this equally describe a generic competitor's customer?" and
+    (b) "does my example_query actually surface UNKNOWN companies, or does it just verify one I already named?"
+  If it fails either test, DELETE it and replace with something sharper grounded in THIS vendor's evidence.
 - weight is 1-5 (5 = strongest signal of fit).
-- Aim for 8-15 sharp discriminators. A few sharp ones beat many bland ones. If evidence is thin, return fewer rather than padding with generic items.`;
+- Aim for 8-15 sharp, findable discriminators. A few sharp ones beat many bland ones. If evidence is thin, return fewer rather than padding.`;
 }
 
 function pickModel() {
