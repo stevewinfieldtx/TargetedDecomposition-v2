@@ -255,6 +255,7 @@ const _routesReady = (async () => {
   if (engine.store.pg && engine.store.pgReady) {
     require('./routes/intel-cache-routes')(app, auth, engine.store.pg);
     require('./routes/research-routes')(app, auth, engine.store.pg, engine);
+    require('./routes/icp-routes')(app, auth, engine.store.pg, engine); // FitScore — ICP scoring layer
   } else {
     console.log('  Intel Cache: SKIPPED (no PostgreSQL)');
     console.log('  Research Routes: SKIPPED (no PostgreSQL)');
