@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ideal Partner Profile — Drix</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2230; --line: #2a3140;
+    --text: #e6edf3; --muted: #9aa7b4; --accent: #4f8cff; --accent2: #7c5cff;
+    --green: #3fb950; --yellow: #d29922;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 20px 80px; }
+  .hero h1 { font-size: 30px; margin: 0 0 8px; letter-spacing: -0.02em; }
+  .hero p { color: var(--muted); margin: 0 0 4px; max-width: 640px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  .form { margin-top: 26px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 0 0 6px; }
+  input[type=text] { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel2); color: var(--text); font-size: 15px; outline: none; }
+  input[type=text]:focus { border-color: var(--accent); }
+  .col { flex: 1 1 240px; }
+  .go { margin-top: 16px; display: inline-flex; align-items: center; gap: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border: 0;
+    padding: 13px 26px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
+  .go:disabled { opacity: 0.55; cursor: default; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+  .status { margin-top: 26px; display: none; }
+  .spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+    border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .results { margin-top: 30px; display: none; }
+  .rhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .rhead h2 { font-size: 22px; margin: 0; }
+  .badge { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .badge.fresh { color: var(--green); border-color: rgba(63,185,80,0.4); }
+  .badge.cached { color: var(--accent); border-color: rgba(79,140,255,0.4); }
+  .summary { color: var(--text); font-size: 17px; margin: 8px 0 22px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .sec { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .sec h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); }
+  .sec ul { margin: 0; padding-left: 18px; }
+  .sec li { margin: 4px 0; }
+  .pill { display: inline-block; background: var(--panel2); border: 1px solid var(--line); border-radius: 999px;
+    padding: 4px 11px; margin: 3px 4px 0 0; font-size: 13px; }
+  .err { display: none; margin-top: 22px; color: #ffb4b4; background: rgba(248,81,73,0.1);
+    border: 1px solid rgba(248,81,73,0.35); border-radius: 10px; padding: 14px 16px; }
+  .foot { margin-top: 16px; color: var(--muted); font-size: 12.5px; }
+  .regen { background: var(--panel2); border: 1px solid var(--line); color: var(--muted);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <h1>Ideal Partner Profile</h1>
+    <p>An Ideal Partner Profile describes the resellers a vendor should recruit — the kind of
+    channel firm (MSP, MSSP, VAR), the certifications, the lines they already carry, and the
+    customers they serve that make them likely to succeed selling this vendor.</p>
+    <p>Enter a vendor and we'll generate its IPP. Results are saved, so the next person who looks
+    it up gets it instantly.</p>
+  </div>
+
+  <div class="card form">
+    <div class="row">
+      <div class="col">
+        <label for="name">Vendor name</label>
+        <input id="name" type="text" placeholder="e.g. Laplink, Trustifi, Acronis" autocomplete="off" />
+      </div>
+      <div class="col">
+        <label for="url">Website (optional — improves accuracy)</label>
+        <input id="url" type="text" placeholder="e.g. laplink.com" autocomplete="off" />
+      </div>
+    </div>
+    <button class="go" id="go">Go</button>
+    <div class="hint">First-time lookups research the vendor's channel live and can take up to a minute. Known vendors return instantly.</div>
+  </div>
+
+  <div class="status" id="status">
+    <div class="card" style="display:flex;align-items:center;gap:14px;">
+      <div class="spinner"></div>
+      <div id="statusText">Researching…</div>
+    </div>
+  </div>
+
+  <div class="err" id="err"></div>
+
+  <div class="results" id="results">
+    <div class="rhead">
+      <h2 id="rTitle">IPP</h2>
+      <span class="badge" id="rBadge"></span>
+      <button class="regen" id="regen">Regenerate</button>
+    </div>
+    <div class="foot" id="rMeta"></div>
+    <div class="summary" id="rSummary"></div>
+    <div class="grid" id="rGrid"></div>
+  </div>
+</div>
+
+<script>
+  // If this page is hosted on Drix.com (a different origin than TDE), set API_BASE
+  // to the TDE service URL, e.g. "https://targeteddecomposition-production.up.railway.app".
+  const API_BASE = "";
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m]));
+  function show(el, on) { el.style.display = on ? "block" : "none"; }
+
+  async function run(force) {
+    const name = $("name").value.trim();
+    const url = $("url").value.trim();
+    if (!name && !url) { showErr("Enter a vendor name or a website."); return; }
+
+    show($("err"), false); show($("results"), false); show($("status"), true);
+    $("statusText").textContent = "Researching " + (name || url) + "'s channel… this can take up to a minute for new vendors.";
+    $("go").disabled = true;
+
+    try {
+      const resp = await fetch(API_BASE + "/ipp/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, url, type: "vendor", force: !!force }),
+      });
+      const data = await resp.json();
+      if (!resp.ok && !data.status) throw new Error(data.error || "Request failed");
+
+      if (data.status === "ready" || data.profile) { render(data); return; }
+      if (data.status === "generating") { await pollUntilReady(data.domain, name || url); return; }
+      if (data.status === "error") { showErr("Generation failed: " + (data.error || "unknown")); return; }
+      throw new Error(data.error || "Unexpected response");
+    } catch (e) {
+      showErr(e.message || "Something went wrong.");
+    } finally {
+      show($("status"), false);
+      $("go").disabled = false;
+    }
+  }
+
+  async function pollUntilReady(domain, label) {
+    $("statusText").textContent = "Researching " + (label || domain) + "'s channel and building reseller discriminators… this can take a minute or two.";
+    const deadline = Date.now() + 4 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5000));
+      let data;
+      try {
+        const resp = await fetch(API_BASE + "/ipp/profile/" + encodeURIComponent(domain));
+        data = await resp.json();
+      } catch { continue; }
+      if (data.status === "ready" || data.profile) { render(data); return; }
+      if (data.status === "error") { showErr("Generation failed: " + (data.error || "unknown")); return; }
+    }
+    showErr("Still generating after a couple of minutes — it keeps working in the background. Try the lookup again shortly.");
+  }
+
+  function showErr(msg) { const e = $("err"); e.textContent = msg; show(e, true); }
+
+  function listSec(title, items, render) {
+    if (!items || (Array.isArray(items) && items.length === 0)) return "";
+    const lis = (Array.isArray(items) ? items : [items]).map((it) => "<li>" + render(it) + "</li>").join("");
+    return '<div class="sec"><h3>' + esc(title) + '</h3><ul>' + lis + "</ul></div>";
+  }
+
+  function render(data) {
+    const p = data.profile || {};
+    const v = data.vendor || {};
+    $("rTitle").textContent = "IPP for " + (v.name || "vendor");
+
+    const badge = $("rBadge");
+    if (data.cached) { badge.className = "badge cached"; badge.textContent = "Saved profile"; }
+    else { badge.className = "badge fresh"; badge.textContent = "Freshly generated"; }
+
+    const when = data.generated_at ? new Date(data.generated_at).toLocaleDateString() : "";
+    $("rMeta").textContent = (v.domain ? v.domain + " · " : "") + (when ? "updated " + when : "") +
+      (data.ttl_days ? " · refreshes every " + data.ttl_days + " days" : "");
+
+    $("rSummary").textContent = p.summary || "";
+
+    let html = "";
+
+    // Discriminators — web-findable reseller traits that split fit from non-fit
+    if (Array.isArray(p.discriminators) && p.discriminators.length) {
+      const cards = [...p.discriminators]
+        .sort((a, b) => (b.weight || 0) - (a.weight || 0))
+        .map((d) => {
+          const det = d.detection || {};
+          return '<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0;background:var(--panel2)">' +
+            '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">' +
+              '<strong style="color:var(--text);font-size:15px">' + esc(d.variable || "") + '</strong>' +
+              (d.weight ? '<span style="color:var(--muted);font-size:12px;white-space:nowrap">weight ' + esc(d.weight) + '</span>' : '') +
+            '</div>' +
+            (d.why_discriminating ? '<div style="color:var(--muted);font-size:13.5px;margin-top:4px">' + esc(d.why_discriminating) + '</div>' : '') +
+            (det.method || det.example_query
+              ? '<div style="margin-top:7px;font-size:13px"><span class="pill">' + esc(det.method || "find") + '</span> <span style="color:var(--muted)">' + esc(det.example_query || "") + '</span></div>'
+              : '') +
+          '</div>';
+        }).join("");
+      html += '<div class="sec" style="grid-column:1/-1"><h3>Discriminators — how to find these resellers</h3>' + cards + '</div>';
+    }
+
+    if (p._low_evidence) {
+      html += '<div class="sec" style="grid-column:1/-1"><h3>Heads up</h3><p>Channel evidence was thin, so discriminators may be limited. Point it at the vendor site (one with a partners / become-a-partner page) and regenerate.</p></div>';
+    }
+
+    html += listSec("Anti-signals (NOT a fit)", p.anti_signals, (x) =>
+      typeof x === "object"
+        ? "<strong>" + esc(x.variable || "") + "</strong>" + (x.detection && x.detection.example_query ? " — " + esc(x.detection.example_query) : "")
+        : esc(x));
+    html += listSec("Partner personas (who to contact)", p.partner_personas, (x) =>
+      typeof x === "object" ? "<strong>" + esc(x.title) + "</strong>" + (x.role ? " — " + esc(x.role) : "") : esc(x));
+
+    $("rGrid").innerHTML = html || '<div class="sec"><h3>Note</h3><p>No structured fields were returned. Try adding the website for better results.</p></div>';
+    show($("results"), true);
+  }
+
+  $("go").addEventListener("click", () => run(false));
+  $("regen").addEventListener("click", () => run(true));
+  [$("name"), $("url")].forEach((el) => el.addEventListener("keydown", (e) => { if (e.key === "Enter") run(false); }));
+</script>
+</body>
+</html>
